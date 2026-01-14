@@ -36,9 +36,23 @@ class AppSettings:
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     """Load application settings from environment variables."""
+    # Validación temprana de credenciales críticas
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+    key = os.getenv("AZURE_OPENAI_KEY", "")
+    
+    # Advertir si las credenciales no están configuradas (no fallar para no romper desarrollo local)
+    if not endpoint or not key:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "ADVERTENCIA: Azure OpenAI no está completamente configurado. "
+            "Defina AZURE_OPENAI_ENDPOINT y AZURE_OPENAI_KEY en variables de entorno. "
+            "Las funciones que requieran LLM fallarán."
+        )
+    
     azure_openai = AzureOpenAIConfig(
-        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
-        key=os.getenv("AZURE_OPENAI_KEY", ""),
+        endpoint=endpoint,
+        key=key,
         deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
         api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
     )

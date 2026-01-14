@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Sequence, Set, TypedDict
 
 import pandas as pd
@@ -100,9 +101,6 @@ ACTIVITY_TIME_PATTERNS: Dict[str, ActivityTimePattern] = {
     ),
 }
 
-_HOLIDAY_CACHE: Dict[int, Set[date]] = {}
-
-
 def _ensure_required_columns(df: pd.DataFrame, columns: Iterable[str]) -> None:
     missing = [col for col in columns if col not in df.columns]
     if missing:
@@ -128,17 +126,16 @@ def _get_row_number(row_numbers: Optional[Sequence[int]], position: int) -> int:
     return position + 2
 
 
-def _get_ec_holidays(year: int) -> Set[date]:
-    if year not in _HOLIDAY_CACHE:
-        try:
-            _HOLIDAY_CACHE[year] = {
-                day for day in holidays.country_holidays("EC", years=[year])
-            }
-            logger.debug("Se cachearon %d feriados para %s.", len(_HOLIDAY_CACHE[year]), year)
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Error obteniendo feriados de Ecuador para %s: %s", year, exc)
-            _HOLIDAY_CACHE[year] = set()
-    return _HOLIDAY_CACHE[year]
+@lru_cache(maxsize=10)
+def _get_ec_holidays(year: int) -> frozenset[date]:
+    """Obtiene feriados de Ecuador para un año específico (cached y thread-safe)."""
+    try:
+        holidays_set = frozenset(holidays.country_holidays("EC", years=[year]))
+        logger.debug("Se cachearon %d feriados para %s.", len(holidays_set), year)
+        return holidays_set
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Error obteniendo feriados de Ecuador para %s: %s", year, exc)
+        return frozenset()
 
 
 def validate_mapping(

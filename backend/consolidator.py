@@ -726,10 +726,12 @@ class TimeSheetConsolidator:
             column = col[0].column_letter
             for cell in col:
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except Exception:
-                    pass
+                    cell_value = str(cell.value) if cell.value is not None else ""
+                    if len(cell_value) > max_length:
+                        max_length = len(cell_value)
+                except (TypeError, AttributeError) as exc:
+                    logger.debug("No se pudo procesar celda en columna %s: %s", column, exc)
+                    continue
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column].width = adjusted_width
     def _sanitize_sheet_name(self, name: str) -> str:

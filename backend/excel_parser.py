@@ -328,7 +328,11 @@ def _select_best_sheet_from_excel_file(
         # Bonus/penalizaciones segun metadata extraida (ayuda para BANINTER)
         try:
             meta = _extract_metadata_rows(df_temp)
-        except Exception:
+        except (KeyError, ValueError, AttributeError) as exc:
+            logger.debug("No se pudo extraer metadata de la hoja %s: %s", sheet_name, exc)
+            meta = {}
+        except Exception as exc:
+            logger.warning("Error inesperado extrayendo metadata de %s: %s", sheet_name, exc)
             meta = {}
         company = str(meta.get("company", "")).lower()
         if company:

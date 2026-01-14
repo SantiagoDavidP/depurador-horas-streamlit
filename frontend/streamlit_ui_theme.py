@@ -4,7 +4,10 @@ Streamlit UI Theme Module v2
 Professional theme system with Light/Dark mode support - Fixed version.
 """
 
+import logging
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # THEME INITIALIZATION
@@ -880,5 +883,9 @@ def render_info_grid(items: list) -> None:
     # st.html renders raw HTML reliably on newer Streamlit versions; fallback keeps older support
     try:
         st.html(html)
-    except Exception:
+    except AttributeError:
+        # st.html no existe en versiones antiguas de Streamlit
+        st.markdown(html, unsafe_allow_html=True)
+    except Exception as exc:
+        logger.warning("Error renderizando HTML: %s", exc)
         st.markdown(html, unsafe_allow_html=True)

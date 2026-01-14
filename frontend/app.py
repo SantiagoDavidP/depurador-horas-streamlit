@@ -40,7 +40,7 @@ from backend.processor import ColumnMapping, TimeSheetProcessor  # noqa: E402
 from config.settings import get_settings  # noqa: E402
 
 # Import custom theme module
-from streamlit_ui_theme import (  # noqa: E402
+from frontend.streamlit_ui_theme import (  # noqa: E402
     apply_theme,
     render_theme_toggle,
     render_header,
@@ -110,6 +110,44 @@ for key, default in {
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitiza nombre de archivo para prevenir path traversal y caracteres inválidos."""
+    import re
+    from pathlib import Path
+    
+    if not filename:
+        return "archivo.xlsx"
+    
+    # Eliminar caracteres peligrosos de Windows y Unix
+    safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', filename)
+    
+    # Prevenir path traversal eliminando rutas
+    safe_name = Path(safe_name).name
+    
+    # Limitar longitud a 200 caracteres
+    if len(safe_name) > 200:
+        name_parts = safe_name.rsplit('.', 1)
+        if len(name_parts) == 2:
+            safe_name = name_parts[0][:190] + '.' + name_parts[1]
+        else:
+            safe_name = safe_name[:200]
+    
+    # Asegurar que no esté vacío después de sanitización
+    if not safe_name or safe_name == '.':
+        safe_name = "archivo.xlsx"
+    
+    return safe_name
+
+
+def sanitize_text_input(text: str, max_length: int = 100) -> str:
+    """Sanitiza texto de entrada del usuario."""
+    if not text:
+        return ""
+    # Eliminar caracteres de control y espacios múltiples
+    sanitized = " ".join(str(text).split())
+    return sanitized[:max_length]
+
 
 def get_plotly_theme() -> dict:
     """Get Plotly theme colors based on current theme."""
@@ -502,6 +540,8 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
 
     with col1:
         cliente_nombre = st.text_input("Nombre del cliente", value=default_client_name)
+        # Sanitizar el nombre del cliente
+        cliente_nombre = sanitize_text_input(cliente_nombre, max_length=100)
 
     with col2:
         first_valid = next((r for r in results if r.success and r.metadata), None)
@@ -513,6 +553,8 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
             default_filename = "Consolidado.xlsx"
 
         output_filename = st.text_input("Nombre archivo", value=default_filename)
+        # Sanitizar el nombre del archivo
+        output_filename = sanitize_filename(output_filename)
 
     if st.button("🚀 Generar Consolidado", type="primary", disabled=not is_valid, use_container_width=True):
         with st.spinner("Generando..."):
@@ -782,7 +824,9 @@ if processing_mode == "Individual":
         
         if use_blob:
             blob_original = st.text_input("Blob original")
+            blob_original = sanitize_filename(blob_original) if blob_original else ""
             blob_corregido = st.text_input("Blob corregido")
+            blob_corregido = sanitize_filename(blob_corregido) if blob_corregido else ""
 else:
     with st.sidebar:
         st.markdown("---")

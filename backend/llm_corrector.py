@@ -28,7 +28,7 @@ class CorrectionResult:
 
 
 class LLMCorrector:
-    """Integración con Azure OpenAI para corrección ortográfica contextual."""
+    """Integración con Azure OpenAI para corrección ortográfica contextual con caché opcional."""
 
     def __init__(
         self,
@@ -38,6 +38,7 @@ class LLMCorrector:
         batch_size: int = 20,
         max_concurrent_requests: int = 3,
         temperature: float = 0.1,
+        enable_cache: bool = True,
     ) -> None:
         settings = get_settings()
         if not client:
@@ -53,6 +54,19 @@ class LLMCorrector:
         self.batch_size = max(1, batch_size)
         self.temperature = temperature
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
+        
+        # Inicializar caché si está habilitado
+        self.enable_cache = enable_cache
+        self._cache = None
+        if enable_cache:
+            try:
+                from backend.llm_cache import get_llm_cache
+                self._cache = get_llm_cache()
+                logger.info("Caché de LLM habilitado")
+            except ImportError:
+                logger.warning("No se pudo importar llm_cache, caché deshabilitado")
+                self.enable_cache = False
+        
         self._system_prompt = (
             "Eres un corrector ortográfico especializado en timesheets de proyectos tecnológicos.\n\n"
             "REGLAS ESTRICTAS:\n\n"
@@ -95,8 +109,34 @@ class LLMCorrector:
     def _normalize(text: str) -> str:
         return text.strip().lower()
 
+    @staticmethod
+    def _sanitize_input(text: str, max_length: int = 200) -> str:
+        """Sanitiza entrada para prevenir inyección de prompts."""
+        if not text:
+            return "No especificado"
+        # Eliminar saltos de línea múltiples y caracteres de control
+        sanitized = " ".join(str(text).split())
+        # Limitar longitud para prevenir inputs excesivos
+        return sanitized[:max_length]
+
     async def _correct_text(self, text: str, role: str, project: str) -> Dict[str, object]:
-        user_prompt = self._user_prompt_template.format(role=role, project=project, text=text)
+        # Sanitizar inputs para prevenir inyección de prompts
+        safe_role = self._sanitize_input(role, max_length=50)
+        safe_project = self._sanitize_input(project, max_length=100)
+        safe_text = self._sanitize_input(text, max_length=500)
+        
+        # Intentar obtener del caché primero
+        if self.enable_cache and self._cache:
+            cached_result = self._cache.get(text, role, project)
+            if cached_result is not None:
+                logger.debug("Usando resultado cacheado para texto: %s...", text[:30])
+                return cached_result
+        
+        user_prompt = self._user_prompt_template.format(
+            role=safe_role, 
+            project=safe_project, 
+            text=safe_text
+        )
         try:
             async with self._semaphore:
                 response = await self.client.chat.completions.create(
@@ -108,9 +148,15 @@ class LLMCorrector:
                     ],
                 )
             content = response.choices[0].message.content or ""
-            return self._parse_llm_response(content, original_text=text)
+            result = self._parse_llm_response(content, original_text=text)
+            
+            # Guardar en caché
+            if self.enable_cache and self._cache:
+                self._cache.set(text, role, project, result)
+            
+            return result
         except OpenAIError as exc:
-            logger.exception("Azure OpenAI request failed: %s", exc)
+            logger.error("Azure OpenAI request failed: %s", exc, exc_info=True)
             return {
                 "texto_corregido": text,
                 "cambios_realizados": [],
