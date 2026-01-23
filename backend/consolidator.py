@@ -25,6 +25,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
+from backend.collaborator_rates import get_collaborator_rates_manager
+
 try:
     from PIL import Image as PILImage
 except ImportError:
@@ -224,6 +226,9 @@ class TimeSheetConsolidator:
 
         # Inferir cargo (puede mejorarse con lógica adicional o desde metadata)
         cargo = self._inferir_cargo(nombre, metadata)
+        
+        # Obtener manager de tarifas
+        rates_manager = get_collaborator_rates_manager()
 
         # Parsear fechas y horas
         parsed_dates = pd.to_datetime(
@@ -255,18 +260,28 @@ class TimeSheetConsolidator:
             # Si no hay columna de tipo de hora, asumir todas como normales
             total_horas_normales = float(valid_hours.sum())
 
-        # Obtener tarifas
-        tarifa_info = self.TARIFAS.get(cargo, self.TARIFAS["Junior"])
-        valor_tarifa = tarifa_info["mensual"]
-        valor_hora_extra = tarifa_info["hora_extra"]
-
-        # Calcular días laborables del mes
-        year = metadata.get("year")
-        month_name = metadata.get("month_name")
-        dias_laborables = self._calcular_dias_laborables(year, month_name)
-
-        # Cálculos de facturación
-        valor_dia = valor_tarifa / dias_laborables if dias_laborables > 0 else 0
+        # Obtener tarifas personalizadas del colaborador
+        # Si el colaborador está en collaborator_rates.json, usa sus datos completos
+        # Si no está, usa defaults por seniority (ya inferido por _inferir_cargo)
+        rate_info = rates_manager.get_rate_for_collaborator(nombre, seniority_fallback=cargo)
+        
+        # Usar valores específicos del colaborador si están disponibles
+        valor_tarifa = rate_info["salario_mensual"]
+        valor_hora_extra = rate_info["valor_hora_extra"]
+        dias_laborables = rate_info["dias_laborables_mes"]
+        valor_dia = rate_info["valor_diario"]
+        
+        # Log si se encontró configuración personalizada
+        if rate_info["found_by_name"]:
+            logger.info(
+                f"Usando tarifas personalizadas para {rate_info['nombre_completo']}: "
+                f"${valor_dia:.2f}/día, ${valor_hora_extra:.2f}/hora extra"
+            )
+        else:
+            logger.info(
+                f"Usando tarifas por seniority ({cargo}) para {nombre}: "
+                f"${valor_dia:.2f}/día"
+            )
         total_facturar = valor_dia * dias_laborados
         total_horas_extras_facturar = total_horas_extras * valor_hora_extra
 
@@ -287,7 +302,13 @@ class TimeSheetConsolidator:
 
     def _inferir_cargo(self, nombre: str, metadata: Dict[str, object]) -> str:
         """
-        Infiere el cargo del consultor desde metadata o nombre.
+        Infiere el cargo del consultor de forma automática.
+        
+        Prioridad:
+        1. Buscar en collaborator_rates.json (si existe el colaborador)
+        2. Metadata del archivo (campo "cargo" o "role")
+        3. Metadata de rol detectado desde actividades
+        4. Default "Junior" (conservador)
 
         Args:
             nombre: Nombre del consultor
@@ -296,16 +317,57 @@ class TimeSheetConsolidator:
         Returns:
             Cargo: Senior, Semisenior o Junior
         """
-        # Buscar en metadata primero
+        # 1. PRIMERO: Intentar obtener desde collaborator_rates.json
+        rates_manager = get_collaborator_rates_manager()
+        collab = rates_manager.find_collaborator(nombre)
+        
+        if collab:
+            # Encontrado en JSON - usar su seniority
+            logger.info(f"Seniority de {nombre} obtenido de collaborator_rates: {collab.seniority}")
+            return collab.seniority
+        
+        # 2. Buscar en metadata del archivo
         if "cargo" in metadata:
-            return str(metadata["cargo"])
+            cargo = str(metadata["cargo"]).strip()
+            logger.info(f"Seniority de {nombre} obtenido de metadata 'cargo': {cargo}")
+            return cargo
+            
         if "role" in metadata:
-            return str(metadata["role"])
-
-        # Inferir desde nombre o aplicar lógica de negocio
-        # TODO: Implementar lógica según criterios del cliente
-        # Por ahora, retornar un valor por defecto
-        return "Semisenior"
+            role = str(metadata["role"]).strip()
+            logger.info(f"Seniority de {nombre} obtenido de metadata 'role': {role}")
+            return role
+        
+        if "seniority" in metadata:
+            seniority = str(metadata["seniority"]).strip()
+            logger.info(f"Seniority de {nombre} obtenido de metadata 'seniority': {seniority}")
+            return seniority
+        
+        # 3. Intentar inferir desde rol detectado en validaciones (si existe)
+        if "detected_role" in metadata:
+            detected_role = str(metadata["detected_role"]).strip().lower()
+            # Mapeo básico de roles a seniority
+            role_to_seniority = {
+                "senior developer": "Senior",
+                "lead developer": "Senior",
+                "architect": "Senior",
+                "developer": "Semisenior",
+                "qa engineer": "Semisenior",
+                "devops": "Semisenior",
+                "junior developer": "Junior",
+                "qa junior": "Junior",
+                "intern": "Junior",
+            }
+            for role_key, seniority_value in role_to_seniority.items():
+                if role_key in detected_role:
+                    logger.info(f"Seniority de {nombre} inferido de rol detectado: {seniority_value}")
+                    return seniority_value
+        
+        # 4. DEFAULT: Usar Junior como opción conservadora
+        logger.warning(
+            f"No se pudo determinar seniority para '{nombre}'. "
+            f"Usando default 'Junior'. Considera agregarlo a collaborator_rates.json"
+        )
+        return "Junior"
 
     def _calcular_dias_laborables(
         self, year: Optional[int], month_name: Optional[str]
@@ -441,6 +503,13 @@ class TimeSheetConsolidator:
         for merged_range in list(ws.merged_cells.ranges):
             ws.unmerge_cells(str(merged_range))
 
+        # Ordenar colaboradores por cargo: Senior -> Semisenior -> Junior
+        seniority_order = {"Senior": 1, "Semisenior": 2, "Junior": 3}
+        sorted_metrics = sorted(
+            self.consultores_metrics,
+            key=lambda m: (seniority_order.get(m.cargo, 4), m.nombre)
+        )
+
         def px_to_points(px: float) -> float:
             """Convierte pixeles a puntos (Excel usa puntos en alturas)."""
             return round(px * 0.75, 2)
@@ -564,7 +633,7 @@ class TimeSheetConsolidator:
 
         data_row_height = px_to_points(28)
 
-        for idx, metrics in enumerate(self.consultores_metrics, start=1):
+        for idx, metrics in enumerate(sorted_metrics, start=1):
             row = header_row + idx
             values = [
                 idx,
@@ -609,7 +678,7 @@ class TimeSheetConsolidator:
         # ============================================================
         # FILA TOTALES
         # ============================================================
-        total_row = header_row + len(self.consultores_metrics) + 1
+        total_row = header_row + len(sorted_metrics) + 1
         ws.merge_cells(f"A{total_row}:C{total_row}")
 
         for col_idx in range(1, 4):

@@ -1,0 +1,161 @@
+{
+  "_metadata": {
+    "description": "Configuración de colaboradores con sus valores de facturación",
+    "version": "1.0.0",
+    "last_updated": "2026-01-22",
+    "currency": "USD"
+  },
+  "collaborators": {
+    "miguel_baquero": {
+      "nombre_completo": "Miguel Baquero",
+      "nombres_alternativos": ["Miguel Baquero", "M. Baquero", "Baquero Miguel"],
+      "seniority": "Senior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2770.00,
+      "valor_diario": 131.90,
+      "valor_hora_extra": 25.00,
+      "activo": true,
+      "email": "miguel.baquero@company.com"
+    },
+    "bryan_chalacan": {
+      "nombre_completo": "Bryan Chalacan",
+      "nombres_alternativos": ["Bryan Chalacan", "B. Chalacan", "Chalacan Bryan"],
+      "seniority": "Senior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2770.00,
+      "valor_diario": 131.90,
+      "valor_hora_extra": 25.00,
+      "activo": true,
+      "email": "bryan.chalacan@company.com"
+    },
+    "pablo_guanoluisa": {
+      "nombre_completo": "Pablo Guanoluisa",
+      "nombres_alternativos": ["Pablo Guanoluisa", "P. Guanoluisa", "Guanoluisa Pablo"],
+      "seniority": "Senior",
+      "dias_laborables_mes": 17,
+      "salario_mensual": 2770.00,
+      "valor_diario": 162.94,
+      "valor_hora_extra": 25.00,
+      "activo": true,
+      "email": "pablo.guanoluisa@company.com",
+      "notas": "Días laborables reducidos"
+    },
+    "darwin_vallejo": {
+      "nombre_completo": "Darwin Vallejo",
+      "nombres_alternativos": ["Darwin Vallejo", "D. Vallejo", "Vallejo Darwin"],
+      "seniority": "Senior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2770.00,
+      "valor_diario": 131.90,
+      "valor_hora_extra": 25.00,
+      "activo": true,
+      "email": "darwin.vallejo@company.com"
+    },
+    "jordy_taez": {
+      "nombre_completo": "Jordy Taez",
+      "nombres_alternativos": ["Jordy Taez", "J. Taez", "Taez Jordy"],
+      "seniority": "Senior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2770.00,
+      "valor_diario": 131.90,
+      "valor_hora_extra": 25.00,
+      "activo": true,
+      "email": "jordy.taez@company.com"
+    },
+    "juan_pablo_molina": {
+      "nombre_completo": "Juan Pablo Molina",
+      "nombres_alternativos": ["Juan Pablo Molina", "JP Molina", "J.P. Molina", "Molina Juan Pablo"],
+      "seniority": "Semisenior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2320.00,
+      "valor_diario": 110.48,
+      "valor_hora_extra": 22.00,
+      "activo": true,
+      "email": "juanpablo.molina@company.com"
+    },
+    "alfredo_aguirre": {
+      "nombre_completo": "Alfredo Aguirre",
+      "nombres_alternativos": ["Alfredo Aguirre", "A. Aguirre", "Aguirre Alfredo"],
+      "seniority": "Semisenior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2320.00,
+      "valor_diario": 110.48,
+      "valor_hora_extra": 22.00,
+      "activo": true,
+      "email": "alfredo.aguirre@company.com"
+    },
+    "marco_landi": {
+      "nombre_completo": "Marco Landi",
+      "nombres_alternativos": ["Marco Landi", "M. Landi", "Landi Marco"],
+      "seniority": "Semisenior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2320.00,
+      "valor_diario": 110.48,
+      "valor_hora_extra": 22.00,
+      "activo": true,
+      "email": "marco.landi@company.com"
+    },
+    "andres_gavino": {
+      "nombre_completo": "Andrés Gavino",
+      "nombres_alternativos": ["Andrés Gavino", "Andres Gavino", "A. Gavino", "Gavino Andrés"],
+      "seniority": "Semisenior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2320.00,
+      "valor_diario": 110.48,
+      "valor_hora_extra": 22.00,
+      "activo": true,
+      "email": "andres.gavino@company.com"
+    },
+    "mateo_granja": {
+      "nombre_completo": "Mateo Granja",
+      "nombres_alternativos": ["Mateo Granja", "M. Granja", "Granja Mateo"],
+      "seniority": "Semisenior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2320.00,
+      "valor_diario": 110.48,
+      "valor_hora_extra": 22.00,
+      "activo": true,
+      "email": "mateo.granja@company.com"
+    },
+    "carlos_rivadeneira": {
+      "nombre_completo": "Carlos Rivadeneira",
+      "nombres_alternativos": ["Carlos Rivadeneira", "Carlos Rivadeneria", "C. Rivadeneira", "Rivadeneira Carlos"],
+      "seniority": "Semisenior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 2320.00,
+      "valor_diario": 110.48,
+      "valor_hora_extra": 22.00,
+      "activo": true,
+      "email": "carlos.rivadeneira@company.com",
+      "notas": "Nota: El apellido a veces aparece como 'Rivadeneria'"
+    },
+    "david_palacios": {
+      "nombre_completo": "David Palacios",
+      "nombres_alternativos": ["David Palacios", "D. Palacios", "Palacios David"],
+      "seniority": "Junior",
+      "dias_laborables_mes": 21,
+      "salario_mensual": 1670.00,
+      "valor_diario": 79.52,
+      "valor_hora_extra": 20.00,
+      "activo": true,
+      "email": "david.palacios@company.com"
+    }
+  },
+  "seniority_defaults": {
+    "Senior": {
+      "salario_mensual_default": 2770.00,
+      "valor_hora_extra_default": 25.00,
+      "dias_laborables_default": 21
+    },
+    "Semisenior": {
+      "salario_mensual_default": 2320.00,
+      "valor_hora_extra_default": 22.00,
+      "dias_laborables_default": 21
+    },
+    "Junior": {
+      "salario_mensual_default": 1670.00,
+      "valor_hora_extra_default": 20.00,
+      "dias_laborables_default": 21
+    }
+  }
+}

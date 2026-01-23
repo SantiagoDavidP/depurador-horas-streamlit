@@ -27,9 +27,21 @@ class AzureStorageConfig:
 
 
 @dataclass
+class AzureADConfig:
+    """Configuración de autenticación Azure AD."""
+    client_id: Optional[str]
+    client_secret: Optional[str]
+    tenant_id: Optional[str]
+    redirect_uri: Optional[str]
+    allowed_group_id: Optional[str]
+    enabled: bool
+
+
+@dataclass
 class AppSettings:
     azure_openai: AzureOpenAIConfig
     azure_storage: AzureStorageConfig
+    azure_ad: AzureADConfig
     log_level: str
 
 
@@ -64,10 +76,22 @@ def get_settings() -> AppSettings:
         credential=os.getenv("AZURE_STORAGE_ACCOUNT_KEY"),
     )
 
+    # Azure AD Authentication
+    azure_ad_enabled = os.getenv("AZURE_AD_AUTH_ENABLED", "false").lower() == "true"
+    azure_ad = AzureADConfig(
+        client_id=os.getenv("AZURE_AD_CLIENT_ID"),
+        client_secret=os.getenv("AZURE_AD_CLIENT_SECRET"),
+        tenant_id=os.getenv("AZURE_AD_TENANT_ID"),
+        redirect_uri=os.getenv("AZURE_AD_REDIRECT_URI", "http://localhost:8501"),
+        allowed_group_id=os.getenv("AZURE_AD_ALLOWED_GROUP_ID"),
+        enabled=azure_ad_enabled,
+    )
+
     log_level = os.getenv("LOG_LEVEL", "INFO")
 
     return AppSettings(
         azure_openai=azure_openai,
         azure_storage=azure_storage,
+        azure_ad=azure_ad,
         log_level=log_level,
     )

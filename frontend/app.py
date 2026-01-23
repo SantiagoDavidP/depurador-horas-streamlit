@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -34,9 +35,11 @@ from backend.consolidator_integration import (  # noqa: E402
     generate_consolidated_from_batch_results,
     validate_batch_results_for_consolidation,
 )
+from backend.adapters.adapter_factory import create_adapter  # noqa: E402
 from backend.excel_parser import ParsedSheet, load_sheet_with_header  # noqa: E402
 from backend.holiday_detector import HolidayDetector  # noqa: E402
 from backend.processor import ColumnMapping, TimeSheetProcessor  # noqa: E402
+from backend.azure_ad_auth import require_authentication, render_user_info_sidebar  # noqa: E402
 from config.settings import get_settings  # noqa: E402
 
 # Import custom theme module
@@ -80,6 +83,14 @@ st.set_page_config(
 
 # Apply custom theme immediately after page config
 apply_theme()
+
+# ============================================================================
+# AUTHENTICATION CHECK
+# ============================================================================
+# This must be called before any other Streamlit content
+authenticated, user_info = require_authentication()
+if not authenticated:
+    st.stop()  # Stop execution if not authenticated
 
 # ============================================================================
 # SESSION STATE INITIALIZATION
@@ -304,16 +315,35 @@ def render_single_file_mapping(
 
     st.markdown("**Mapeo de columnas:**")
     col1, col2 = st.columns(2)
+
+    def _find_index(preferred: List[str], fallback: int) -> int:
+        for name in preferred:
+            if name in columns:
+                return columns.index(name)
+        return fallback
+
+    date_index = _find_index(["Fecha", "date", "Date"], 0)
+    hours_index = _find_index(["Horas", "hours", "Hours"], min(1, len(columns) - 1))
+    description_index = _find_index(
+        ["Actividad", "Descripcion_Actividad", "Descripcion", "description", "Description"],
+        0,
+    )
+    project_index = 0
+    for name in ["Proyecto", "project", "Project"]:
+        if name in columns:
+            project_index = columns.index(name) + 1
+            break
     
     with col1:
-        column_date = st.selectbox("📅 Fecha", columns)
-        column_hours = st.selectbox("⏱️ Horas", columns, index=min(1, len(columns) - 1))
+        column_date = st.selectbox("📅 Fecha", columns, index=date_index)
+        column_hours = st.selectbox("⏱️ Horas", columns, index=hours_index)
         
     with col2:
-        column_description = st.selectbox("📝 Descripción", columns)
+        column_description = st.selectbox("📝 Descripción", columns, index=description_index)
         column_project = st.selectbox(
             "🏷️ Proyecto (opcional)",
             ["— Ninguna —"] + columns,
+            index=project_index,
         )
 
     mapping = ColumnMapping(
@@ -327,6 +357,10 @@ def render_single_file_mapping(
 
 def render_batch_sidebar() -> Dict[str, object]:
     """Render batch processing sidebar."""
+    # Render user info at the top of sidebar
+    render_user_info_sidebar()
+    
+    st.sidebar.markdown("---")
     st.sidebar.markdown("**📁 Archivos**")
     uploaded_files = st.sidebar.file_uploader(
         "Cargar archivos",
@@ -793,6 +827,20 @@ with st.sidebar:
     render_theme_toggle()
     
     st.markdown("---")
+    st.markdown("### 📊 Fuente de Datos")
+    
+    # SQL functionality temporarily disabled for configuration
+    # data_source_type = st.radio(
+    #     "Tipo de fuente",
+    #     ["Excel", "SQL (Fabric)"],
+    #     horizontal=True,
+    #     help="Selecciona si los datos vienen de archivos Excel o de Microsoft Fabric SQL Endpoint"
+    # )
+    
+    # Force Excel as default data source
+    data_source_type = "Excel"
+    
+    st.markdown("---")
     st.markdown("### ⚙️ Configuración")
     
     processing_mode = st.radio(
@@ -811,22 +859,29 @@ with st.sidebar:
         ["Desconocido", "Developer", "QA", "DevOps", "Project Manager", "Otro"],
     )
 
+# ============================================================================
+# AZURE BLOB STORAGE - TEMPORALMENTE DESHABILITADO
+# ============================================================================
+# Descomentar cuando se requiera usar Azure Blob Storage
 use_blob = False
 blob_original = ""
 blob_corregido = ""
 batch_sidebar_state: Optional[Dict[str, object]] = None
 
 if processing_mode == "Individual":
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### ☁️ Azure Blob")
-        use_blob = st.checkbox("Usar Azure Blob Storage", value=False)
-        
-        if use_blob:
-            blob_original = st.text_input("Blob original")
-            blob_original = sanitize_filename(blob_original) if blob_original else ""
-            blob_corregido = st.text_input("Blob corregido")
-            blob_corregido = sanitize_filename(blob_corregido) if blob_corregido else ""
+    # AZURE BLOB STORAGE UI - DESHABILITADO
+    # Descomentar el siguiente bloque para habilitar Azure Blob Storage
+    # with st.sidebar:
+    #     st.markdown("---")
+    #     st.markdown("### ☁️ Azure Blob")
+    #     use_blob = st.checkbox("Usar Azure Blob Storage", value=False)
+    #     
+    #     if use_blob:
+    #         blob_original = st.text_input("Blob original")
+    #         blob_original = sanitize_filename(blob_original) if blob_original else ""
+    #         blob_corregido = st.text_input("Blob corregido")
+    #         blob_corregido = sanitize_filename(blob_corregido) if blob_corregido else ""
+    pass
 else:
     with st.sidebar:
         st.markdown("---")
@@ -856,33 +911,136 @@ if processing_mode == "Por lotes":
 # INDIVIDUAL FILE PROCESSING
 # ============================================================================
 
-render_section_header("Cargar archivo", icon="📤")
+# Handle data loading based on source type
+if data_source_type == "Excel":
+    render_section_header("Cargar archivo", icon="📤")
 
-uploaded_file = st.file_uploader(
-    "Excel",
-    type=["xlsx", "xls"],
-    label_visibility="collapsed",
-)
-
-if not uploaded_file:
-    render_empty_state(
-        "📊",
-        "Arrastra tu archivo Excel aquí",
-        "O haz clic para seleccionar un archivo .xlsx o .xls"
+    uploaded_file = st.file_uploader(
+        "Excel",
+        type=["xlsx", "xls"],
+        label_visibility="collapsed",
     )
-    st.stop()
 
-source_bytes = uploaded_file.getvalue()
-source_name = uploaded_file.name or "reporte.xlsx"
+    if not uploaded_file:
+        render_empty_state(
+            "📊",
+            "Arrastra tu archivo Excel aquí",
+            "O haz clic para seleccionar un archivo .xlsx o .xls"
+        )
+        st.stop()
+
+    source_bytes = uploaded_file.getvalue()
+    source_name = uploaded_file.name or "reporte.xlsx"
 
 
-@st.cache_data(show_spinner=False)
-def cache_parsed_sheet_auto(file_bytes: bytes) -> ParsedSheet:
-    return load_sheet_with_header(file_bytes)
+    @st.cache_data(show_spinner=False)
+    def cache_parsed_sheet_auto(file_bytes: bytes) -> ParsedSheet:
+        return load_sheet_with_header(file_bytes)
 
 
-with st.spinner("Analizando archivo..."):
-    parsed_sheet = cache_parsed_sheet_auto(source_bytes)
+    with st.spinner("Analizando archivo..."):
+        parsed_sheet = cache_parsed_sheet_auto(source_bytes)
+
+else:  # SQL (Fabric)
+    render_section_header("Configurar consulta SQL", icon="🗄️")
+    
+    st.info(
+        "📝 **Nota:** Asegúrate de configurar las variables de entorno SQL:\\n"
+        "- `FABRIC_SQL_SERVER`\\n"
+        "- `FABRIC_SQL_DATABASE`\\n"
+        "- `FABRIC_SQL_USE_AZURE_AD` o `FABRIC_SQL_USERNAME`/`PASSWORD`"
+    )
+    
+    # SQL query configuration
+    use_custom_query = st.checkbox("Usar consulta SQL personalizada", value=False)
+    
+    if use_custom_query:
+        custom_query = st.text_area(
+            "Consulta SQL",
+            value="SELECT * FROM Timesheets WHERE Empleado = 'John Doe'",
+            height=150,
+            help="Escribe tu consulta SQL personalizada"
+        )
+    else:
+        custom_query = None
+        st.markdown("**Filtro por mes y anio:**")
+        month_options = [
+            (1, "Enero"),
+            (2, "Febrero"),
+            (3, "Marzo"),
+            (4, "Abril"),
+            (5, "Mayo"),
+            (6, "Junio"),
+            (7, "Julio"),
+            (8, "Agosto"),
+            (9, "Septiembre"),
+            (10, "Octubre"),
+            (11, "Noviembre"),
+            (12, "Diciembre"),
+        ]
+        month_labels = {value: label for value, label in month_options}
+        today = date.today()
+        selected_month = st.selectbox(
+            "Mes",
+            [value for value, _ in month_options],
+            index=today.month - 1,
+            format_func=lambda value: month_labels[value],
+        )
+        selected_year = st.number_input(
+            "Anio",
+            min_value=2000,
+            max_value=2100,
+            value=today.year,
+            step=1,
+        )
+
+    
+    if st.button("🔄 Cargar datos desde SQL", type="primary", use_container_width=True):
+        try:
+            with st.spinner("Conectando a Microsoft Fabric SQL..."):
+                # Build additional params for SQL adapter
+                additional_params = {}
+                if not use_custom_query:
+                    additional_params["period_month"] = int(selected_month)
+                    additional_params["period_year"] = int(selected_year)
+                
+                # Create SQL adapter and load data
+                adapter = create_adapter(
+                    source_type="sql",
+                    query=custom_query if use_custom_query else None,
+                    **additional_params
+                )
+                
+                # Test connection first
+                if not adapter.test_connection():
+                    st.error("❌ No se pudo conectar a la base de datos SQL. Verifica las credenciales.")
+                    st.stop()
+                
+                parsed_sheet = adapter.load()
+                source_name = "SQL_Data"
+                source_bytes = None  # No file bytes for SQL
+                
+                st.success(f"✅ Cargados {len(parsed_sheet.dataframe)} registros desde SQL")
+                st.session_state["sql_parsed_sheet"] = parsed_sheet
+                st.session_state["sql_source_name"] = source_name
+                
+        except Exception as e:
+            st.error(f"❌ Error al cargar desde SQL: {e}")
+            logger.error(f"SQL load error: {e}", exc_info=True)
+            st.stop()
+    
+    # Check if we have SQL data loaded in session
+    if "sql_parsed_sheet" not in st.session_state:
+        render_empty_state(
+            "🗄️",
+            "Configura y carga datos desde SQL",
+            "Haz clic en 'Cargar datos desde SQL' para comenzar"
+        )
+        st.stop()
+    
+    parsed_sheet = st.session_state["sql_parsed_sheet"]
+    source_name = st.session_state["sql_source_name"]
+    source_bytes = None
     
 dataframe = parsed_sheet.dataframe.copy()
 columns = [str(col) for col in dataframe.columns]
