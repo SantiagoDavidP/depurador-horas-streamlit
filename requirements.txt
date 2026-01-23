@@ -1,7 +1,7 @@
 pandas==2.2.2
 openpyxl==3.1.2
 holidays==0.47
-azure-storage-blob==12.19.0
+azure-storage-blob==12.28.0
 openai==1.35.10
 python-dotenv==1.0.1
 streamlit==1.38.0
@@ -10,14 +10,14 @@ fuzzywuzzy[speedup]==0.18.0
 python-Levenshtein==0.21.1
 plotly==5.23.0
 httpx==0.27.2
-pyodbc==5.0.1
+pyodbc==5.3.0
 
 # Azure AD Authentication
 msal==1.28.0
-requests==2.31.0
+requests==2.32.5
 
 # System monitoring
-psutil==5.9.8
+psutil==7.2.1
 
 # Testing y desarrollo
 pytest==8.0.0
