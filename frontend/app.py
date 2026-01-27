@@ -312,22 +312,40 @@ def auto_detect_profile_from_files(
     profiles = get_profile_catalog()
     sample = files[0]
 
-    # 1️⃣ Parsear hoja
     sheets = load_multiple_sheets(sample.getvalue())
     parsed = next((s for s in sheets if not s.dataframe.empty), None)
     if not parsed:
         return None, {}
+
     metadata = parsed.metadata or {}
-    df = parsed.dataframe
-
-
     df = parsed.dataframe
     df_columns = [str(c).lower() for c in df.columns]
 
+    company = str(metadata.get("company", "")).lower()
+
+    # =====================================================
+    # 1️⃣ PRIORIDAD ABSOLUTA: metadata / alias de empresa
+    # =====================================================
+    for pid, profile in profiles.items():
+        # nombre directo
+        if profile.name.lower() in company:
+            return pid, metadata
+
+        # aliases
+        aliases = profile.company_aliases or []
+        if isinstance(aliases, str):
+            aliases = [aliases]
+
+        for alias in aliases:
+            if str(alias).lower() in company:
+                return pid, metadata
+
+    # =====================================================
+    # 2️⃣ FALLBACK: heurística por columnas
+    # =====================================================
     best_match = None
     best_score = 0
 
-    # 2️⃣ Evaluar cada perfil
     for pid, profile in profiles.items():
         mapping = profile.mapping or {}
 
@@ -337,26 +355,21 @@ def auto_detect_profile_from_files(
             if v
         ]
 
-        # score por coincidencia de columnas
         matches = sum(
             1 for col in expected_cols
             if any(col in df_col for df_col in df_columns)
         )
 
-        # bonus si el nombre del cliente aparece en metadata
-        company = str(metadata.get("company", "")).lower()
-        if profile.name.lower() in company:
-            matches += 2
-
         if matches > best_score:
             best_score = matches
             best_match = pid
 
-    # 3️⃣ Umbral mínimo (evita falsos positivos)
-    if best_match and best_score >= 2:
+    # mínimo razonable
+    if best_match and best_score >= 3:
         return best_match, metadata
 
     return None, metadata
+
 
 
 def render_batch_sidebar() -> Dict[str, object]:
@@ -378,48 +391,45 @@ def render_batch_sidebar() -> Dict[str, object]:
 
     uploaded_files = st.session_state.get("uploaded_files_cache") or []
 
-    if uploaded_files:
-        st.sidebar.success(f"✓ {len(uploaded_files)} archivo(s)")
-
-        # Firma segura (UploadedFile SÍ tiene name y size)
-        current_signature = tuple((f.name, f.size) for f in uploaded_files)
-
-        if st.session_state.get("batch_files_signature") != current_signature:
-            st.session_state["batch_files_signature"] = current_signature
-
-            # limpiar SOLO lo dependiente
-            st.session_state.pop("batch_results", None)
-            st.session_state.pop("consolidated_result", None)
-            st.session_state.pop("batch_mapping", None)
-
-            st.session_state["batch_selected_profile"] = "__manual__"
-            st.session_state.pop("auto_mapping_detected", None)
-
-            for k in ["date", "hours", "description", "project"]:
-                st.session_state[f"batch_map_{k}"] = ""
-
-
-    # =====================================================
-    # 🔍 AUTO-DETECCIÓN DE CLIENTE
-    # =====================================================
     profiles = get_profile_catalog()
     manual_option = "__manual__"
 
-    if uploaded_files and st.session_state.get("batch_selected_profile") == manual_option:
-        detected_profile_id, _ = auto_detect_profile_from_files(uploaded_files)
+    if uploaded_files:
+        st.sidebar.success(f"✓ {len(uploaded_files)} archivo(s)")
 
-        if detected_profile_id and detected_profile_id in profiles:
-            detected_profile = profiles[detected_profile_id]
+        # =====================================================
+        # 📌 FIRMA DE ARCHIVOS (ÚNICA FUENTE DE VERDAD)
+        # =====================================================
+        current_files_signature = tuple((f.name, f.size) for f in uploaded_files)
+        previous_signature = st.session_state.get("batch_files_signature")
 
-            # Guardar selección detectada
-            st.session_state["batch_selected_profile"] = detected_profile_id
-            st.session_state["auto_mapping_detected"] = detected_profile.mapping
+        if previous_signature != current_files_signature:
+            # 🆕 archivos nuevos → reset TOTAL
+            st.session_state["batch_files_signature"] = current_files_signature
+            st.session_state["batch_selected_profile"] = "__manual__"
+            st.session_state.pop("auto_mapping_detected", None)
 
-            # Prellenar inputs
-            for k, v in detected_profile.mapping.items():
-                st.session_state[f"batch_map_{k}"] = v
+            # limpiar inputs de mapping
+            for k in ["date", "hours", "description", "project"]:
+                st.session_state[f"batch_map_{k}"] = ""
 
-            st.sidebar.success(f"🎯 Cliente detectado: {detected_profile.name}")
+            detected_profile_id, _ = auto_detect_profile_from_files(uploaded_files)
+
+            if detected_profile_id and detected_profile_id in profiles:
+                detected_profile = profiles[detected_profile_id]
+
+                st.session_state["batch_selected_profile"] = detected_profile_id
+                st.session_state["auto_mapping_detected"] = detected_profile.mapping.copy()
+
+                for k, v in detected_profile.mapping.items():
+                    st.session_state[f"batch_map_{k}"] = v
+
+                st.sidebar.success(f"🎯 Cliente detectado: {detected_profile.name}")
+
+
+
+
+
 
     # =====================================================
     # 🏢 CLIENTE
@@ -444,7 +454,18 @@ def render_batch_sidebar() -> Dict[str, object]:
         else 0,
         label_visibility="collapsed",
     )
+
+    
+    prev_profile = st.session_state.get("_prev_batch_profile")
     st.session_state["batch_selected_profile"] = selected_profile
+
+    # 🔥 si el usuario cambió manualmente el cliente → limpiar auto-mapping
+    if prev_profile and prev_profile != selected_profile:
+        st.session_state.pop("auto_mapping_detected", None)
+        for k in ["date", "hours", "description", "project"]:
+            st.session_state[f"batch_map_{k}"] = ""
+
+    st.session_state["_prev_batch_profile"] = selected_profile
 
     profile_obj = profiles.get(selected_profile)
 
@@ -468,36 +489,34 @@ def render_batch_sidebar() -> Dict[str, object]:
     else:
         st.sidebar.caption("Define el mapeo:")
 
-        auto_mapping = st.session_state.get("auto_mapping_detected", {})
+        if selected_profile != manual_option and profile_obj:
+            st.sidebar.caption("Mapeo detectado:")
+            for logical_name, column in profile_obj.mapping.items():
+                st.sidebar.markdown(f"• **{logical_name}:** {column}")
 
-        mapping_values = {
-            "date": st.sidebar.text_input(
-                "📅 Fecha",
-                key="batch_map_date",
-                value=auto_mapping.get("date", ""),
-                placeholder="Columna",
-            ),
-            "hours": st.sidebar.text_input(
-                "⏱️ Horas",
-                key="batch_map_hours",
-                value=auto_mapping.get("hours", ""),
-                placeholder="Columna",
-            ),
-            "description": st.sidebar.text_input(
-                "📝 Descripción",
-                key="batch_map_description",
-                value=auto_mapping.get("description", ""),
-                placeholder="Columna",
-            ),
-            "project": st.sidebar.text_input(
-                "🏷️ Proyecto",
-                key="batch_map_project",
-                value=auto_mapping.get("project", ""),
-                placeholder="Opcional",
-            ),
-        }
-        profile_settings = {}
-        profile_id = None
+            mapping_values = {
+                "date": profile_obj.mapping.get("date", ""),
+                "hours": profile_obj.mapping.get("hours", ""),
+                "description": profile_obj.mapping.get("description", ""),
+                "project": profile_obj.mapping.get("project", ""),
+            }
+            profile_settings = profile_obj.settings
+            profile_id = selected_profile
+
+        else:
+            st.sidebar.caption("Define el mapeo:")
+
+            auto_mapping = st.session_state.get("auto_mapping_detected", {})
+
+            mapping_values = {
+                "date": st.sidebar.text_input("📅 Fecha", key="batch_map_date", value=auto_mapping.get("date", "")),
+                "hours": st.sidebar.text_input("⏱️ Horas", key="batch_map_hours", value=auto_mapping.get("hours", "")),
+                "description": st.sidebar.text_input("📝 Descripción", key="batch_map_description", value=auto_mapping.get("description", "")),
+                "project": st.sidebar.text_input("🏷️ Proyecto", key="batch_map_project", value=auto_mapping.get("project", "")),
+            }
+            profile_settings = {}
+            profile_id = None
+
 
     return {
         "files": uploaded_files or [],
@@ -1226,34 +1245,60 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%d%%")},
     )
 
-    st.markdown("#### 🔍 Ver Detalles Individuales")
-    seleccion = st.selectbox("Selecciona un consultor:", options=df_resumen["Consultor"].tolist())
+    st.markdown("#### 🔍 Detalle por Consultor")
 
-    if seleccion:
-        row = df_resumen[df_resumen["Consultor"] == seleccion].iloc[0]
-        res = batch_results[int(row["Index"])]
+    # Contenedor con scroll
+    st.markdown("""
+    <style>
+    .consultor-scroll {
+        max-height: 500px;
+        overflow-y: auto;
+        padding-right: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-        if res.success and res.result:
+    with st.container():
+        st.markdown('<div class="consultor-scroll">', unsafe_allow_html=True)
+
+        for _, row in df_resumen.iterrows():
+            res = batch_results[int(row["Index"])]
+
+            if not (res.success and res.result):
+                continue
+
             summ = res.result.summary
-            st.markdown(f"##### 👤 {seleccion}")
+            nombre = row["Consultor"]
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Registros", summ.total_registros)
-            m2.metric("Horas", f"{summ.horas_totales:.1f}")
-            m3.metric("Errores", summ.total_errores)
-            m4.metric("Score", f"{summ.quality_score:.0f}%")
+            st.markdown(f"### 👤 {nombre}")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("📝 Registros", summ.total_registros)
+            c2.metric("⏰ Horas", f"{summ.horas_totales:.1f}")
+            c3.metric("🚨 Errores", summ.total_errores)
+            c4.metric("📈 Score", f"{summ.quality_score:.0f}%")
 
             if not res.result.errors_dataframe.empty:
                 st.warning("Observaciones encontradas:")
                 st.dataframe(
-                    res.result.errors_dataframe[["fecha", "tipo_error", "descripcion", "valor_original"]],
+                    res.result.errors_dataframe[
+                        ["fecha", "tipo_error", "descripcion", "valor_original"]
+                    ],
                     use_container_width=True,
                     hide_index=True,
                 )
             else:
                 st.success("🎉 Sin errores detectados.")
 
-            render_holiday_block(res.result.corrected_dataframe, mapping.date, metadata=res.result.metadata)
+            render_holiday_block(
+                res.result.corrected_dataframe,
+                mapping.date if mapping else None,
+                metadata=res.result.metadata,
+            )
+
+            st.markdown("---")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # =============================================================================
@@ -1282,6 +1327,17 @@ with st.sidebar:
     if processing_mode == "Por lotes":
         st.markdown("---")
         batch_sidebar_state = render_batch_sidebar()
+
+    # 🔥 SI CAMBIÓ EL CLIENTE → BORRAR AUTO MAPPING
+    prev_profile = st.session_state.get("_prev_batch_profile")
+    current_profile = st.session_state.get("batch_selected_profile")
+
+    if prev_profile != current_profile:
+        st.session_state.pop("auto_mapping_detected", None)
+
+    st.session_state["_prev_batch_profile"] = current_profile
+
+
 
 # MAIN
 render_header("Depurador de Horas", "Valida y depura registros de timesheet automáticamente")
