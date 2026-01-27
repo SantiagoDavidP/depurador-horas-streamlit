@@ -9,9 +9,21 @@
     },
     "rol_default": "Developer",
     "horas_esperadas_dia": 8.0,
-    "keywords": ["bit", "nova"],
-    "company_aliases": ["bit", "bit nova", "bitnova"],
-    "tipos_hora_validos": ["HN", "HE", "HN50", "HE100"]
+    "keywords": [
+      "bit",
+      "nova"
+    ],
+    "company_aliases": [
+      "bit",
+      "bit nova",
+      "bitnova"
+    ],
+    "tipos_hora_validos": [
+      "HN",
+      "HE",
+      "HN50",
+      "HE100"
+    ]
   },
   "cliente_talent": {
     "nombre": "BANINTER",
@@ -23,9 +35,20 @@
     },
     "rol_default": "Developer",
     "horas_esperadas_dia": 8.0,
-    "keywords": ["Banco", "Internacional"],
-    "company_aliases": ["banco internacional", "Banco Internacional"],
-    "tipos_hora_validos": ["HN", "HE", "HN50", "HE100"]
+    "keywords": [
+      "banco internacional",
+      "baninter"
+    ],
+    "company_aliases": [
+      "banco internacional",
+      "baninter"
+    ],
+    "tipos_hora_validos": [
+      "HN",
+      "HE",
+      "HN50",
+      "HE100"
+    ]
   },
   "cliente_generico": {
     "nombre": "Generico Manual",

@@ -72,9 +72,21 @@ def detect_client_from_metadata(metadata: Dict[str, object], profile: ClientProf
     company = metadata.get("company") or metadata.get("empresa")
     if not company:
         return False
+    
     normalized_company = _normalize(str(company))
     aliases = profile.company_aliases or []
-    return any(alias in normalized_company for alias in aliases)
+    
+    # 🔹 FIX: Asegurar que aliases sea una lista
+    if isinstance(aliases, str):
+        aliases = [aliases]
+    
+    # 🔹 Normalizar aliases también
+    for alias in aliases:
+        normalized_alias = _normalize(str(alias))
+        if normalized_alias in normalized_company:
+            return True
+    
+    return False
 
 
 def auto_detect_profile(

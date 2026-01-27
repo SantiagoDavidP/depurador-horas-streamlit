@@ -74,13 +74,34 @@ def generate_consolidated_from_batch_results(
 
     for batch_result in successful_results:
         try:
-            # Obtener el DataFrame corregido
-            corrected_df = batch_result.result.corrected_dataframe
+            corrected_df = batch_result.result.corrected_dataframe.copy()
 
-            # Combinar metadata del ParsedSheet con metadata del ProcessorResult
+            # =========================================================
+            # 1️⃣ Normalizar columnas SIN perder información
+            #     - elimina solo duplicados (_1, _2...)
+            #     - conserva TODAS las columnas reales
+            # =========================================================
+            clean_cols = []
+            seen = set()
+
+            for col in corrected_df.columns:
+                base = str(col).strip()
+
+                # eliminar sufijos técnicos: _1, _2, .1, .2
+                base_key = base.split("_")[0].split(".")[0]
+
+                if base_key not in seen:
+                    clean_cols.append(col)
+                    seen.add(base_key)
+
+            corrected_df = corrected_df[clean_cols]
+
+            # =========================================================
+            # 2️⃣ Combinar metadata
+            # =========================================================
             combined_metadata = {
-                **batch_result.metadata,  # Metadata del parser (period, employee, etc.)
-                **batch_result.result.metadata,  # Metadata del processor
+                **(batch_result.metadata or {}),
+                **(batch_result.result.metadata or {}),
                 "file_name": batch_result.file_name,
                 "client_id": batch_result.client_id,
             }
@@ -100,6 +121,8 @@ def generate_consolidated_from_batch_results(
                 exc,
             )
             continue
+
+
 
     if not consultores_data:
         raise ValueError("No se pudieron extraer datos válidos de los resultados")

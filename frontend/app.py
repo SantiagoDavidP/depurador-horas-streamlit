@@ -313,8 +313,13 @@ def auto_detect_profile_from_files(
     sample = files[0]
 
     # 1️⃣ Parsear hoja
-    parsed = load_sheet_with_header(sample.getvalue())
+    sheets = load_multiple_sheets(sample.getvalue())
+    parsed = next((s for s in sheets if not s.dataframe.empty), None)
+    if not parsed:
+        return None, {}
     metadata = parsed.metadata or {}
+    df = parsed.dataframe
+
 
     df = parsed.dataframe
     df_columns = [str(c).lower() for c in df.columns]
@@ -902,7 +907,43 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         st.error("❌ No se detectaron hojas válidas con datos.")
         return
 
+    # 🔹 FILTRAR HOJAS BASURA (genéricas de Excel sin metadata válida)
+    filtered_sheets = []
+    skipped_generic_sheets = []
+
+    for sheet in all_parsed_sheets:
+        sheet_name_lower = sheet.sheet_name.lower()
+        metadata = sheet.metadata or {}
+        
+        # ⚠️ Ignorar hojas genéricas SIN metadata de cliente/empleado
+        is_generic_name = sheet_name_lower in ["hoja1", "sheet1", "hoja", "sheet", "hoja 1", "sheet 1"]
+        has_no_metadata = not metadata.get("company") and not metadata.get("employee")
+        
+        if is_generic_name and has_no_metadata:
+            skipped_generic_sheets.append(sheet.sheet_name)
+            logger.warning(f"🗑️ Ignorando hoja genérica sin metadata: '{sheet.sheet_name}'")
+            continue
+        
+        filtered_sheets.append(sheet)
+
+    # Mostrar hojas ignoradas si existen
+    if skipped_generic_sheets:
+        with st.expander("🗑️ Hojas ignoradas (sin metadata)", expanded=False):
+            for name in skipped_generic_sheets:
+                st.caption(f"• {name} (hoja genérica sin datos de cliente/empleado)")
+
+    if not filtered_sheets:
+        st.error("❌ No se encontraron hojas con datos válidos de timesheet.")
+        return
+
+    # Usar solo hojas filtradas
+    all_parsed_sheets = filtered_sheets
+
     num_consultores = len(all_parsed_sheets)
+
+
+
+
     if num_consultores > 1:
         st.success(f"✅ Se detectaron **{num_consultores} empleados**.")
     else:
@@ -935,6 +976,33 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
 
     profiles = list(get_profile_catalog().values())
     auto_profile_id = auto_detect_profile(source_name, getattr(first_sheet, "metadata", {}), profiles)
+
+    # 🔹 FALLBACK: Detección manual si auto_detect falla
+    if not auto_profile_id:
+        metadata = getattr(first_sheet, "metadata", {})
+        company = str(metadata.get("company", "")).lower()
+        
+        # Buscar en todos los perfiles
+        for profile in profiles:
+            # Buscar por nombre
+            if profile.name.lower() in company:
+                auto_profile_id = profile.client_id
+                st.success(f"🎯 Cliente detectado (por nombre): **{profile.name}**")
+                break
+            
+            # Buscar por aliases (con fix de tipo)
+            aliases = profile.company_aliases or []
+            if isinstance(aliases, str):
+                aliases = [aliases]
+            
+            for alias in aliases:
+                if str(alias).lower() in company:
+                    auto_profile_id = profile.client_id
+                    st.success(f"🎯 Cliente detectado (por alias): **{profile.name}**")
+                    break
+            
+            if auto_profile_id:
+                break
 
     # Defaults
     selected_settings = {
@@ -972,7 +1040,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         selected_settings["hours_tolerance_factor"] = float(tolerance)
         selected_settings["role"] = str(role_select)
 
-    # ------------------ PROCESS BUTTON ------------------
+# ------------------ PROCESS BUTTON ------------------
     if st.button(f"🚀 PROCESAR {num_consultores} CONSULTORES", type="primary", use_container_width=True):
         st.session_state["batch_results_accumulator"] = None
         st.session_state["consolidated_result"] = None
@@ -981,13 +1049,29 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         progress_bar = st.progress(0)
 
         batch_results_accumulator: List[BatchFileResult] = []
-        skipped_sheets: List[Tuple[str, List[str]]] = []  # (sheet_name, detected_columns)
+        skipped_sheets: List[Tuple[str, List[str]]] = []
 
         try:
             total_sheets = len(all_parsed_sheets)
 
             for i, sheet in enumerate(all_parsed_sheets):
-                emp_name = (sheet.metadata or {}).get("employee", sheet.sheet_name)
+                # 🔹 VALIDAR METADATA ANTES DE PROCESAR
+                sheet_metadata = sheet.metadata or {}
+                emp_name = sheet_metadata.get("employee")
+                
+                # ⚠️ FILTRO CRÍTICO: Si no hay empleado válido, SKIP
+                if not emp_name:
+                    cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
+                    skipped_sheets.append((sheet.sheet_name, cols_detectadas))
+                    logger.warning(f"🚫 Saltando hoja '{sheet.sheet_name}' - sin empleado detectado")
+                    continue
+                
+                # ⚠️ Ignorar empleados con nombres genéricos
+                if emp_name.lower() in ["hoja1", "sheet1", "empleado", "consultor", "hoja", "sheet"]:
+                    cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
+                    skipped_sheets.append((sheet.sheet_name, cols_detectadas))
+                    logger.warning(f"🚫 Saltando hoja '{sheet.sheet_name}' - nombre genérico: {emp_name}")
+                    continue
                 progress_text.info(f"⏳ Procesando ({i+1}/{total_sheets}): {emp_name}")
                 progress_bar.progress(int((i / max(total_sheets, 1)) * 90))
 
@@ -1001,7 +1085,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
                 # 🔹 inferir mapping PARA ESTA HOJA
                 mapping_to_use = infer_column_mapping(sheet.dataframe, profile_mapping)
 
-                # ✅ CAMBIO CLAVE: si NO es timesheet, se ignora (NO se cae el sistema)
+                # ✅ Si NO es timesheet válido, se ignora
                 if mapping_to_use is None:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
@@ -1016,7 +1100,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
                 result_single = processor.process_parsed_sheet(
                     parsed_sheet=sheet,
                     mapping=mapping_to_use,
-                    source_name=f"{source_name} :: {sheet.sheet_name}",
+                    source_name=f"{source_name} :: {emp_name}",  # 🔹 USA emp_name validado
                     original_excel_bytes=None,
                     correct_spelling=bool(selected_settings["correct_spelling"]),
                     upload_to_blob=False,
@@ -1031,12 +1115,12 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
 
                 batch_results_accumulator.append(
                     BatchFileResult(
-                        file_name=f"{sheet.sheet_name}.xlsx",
+                        file_name=f"{emp_name}.xlsx",  # ✅ usa empleado validado
                         success=True,
                         result=result_single,
-                        sheet_name=sheet.sheet_name,
+                        sheet_name=emp_name,  # ✅ nombre correcto
                         client_id=auto_profile_id or "manual",
-                        metadata=sheet.metadata,
+                        metadata=sheet_metadata,  # ✅ metadata validada
                     )
                 )
 
