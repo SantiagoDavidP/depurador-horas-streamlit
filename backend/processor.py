@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import Counter
 
 import logging
 import os
@@ -10,7 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
-
+from backend.models import ColumnMapping
 from backend import azure_storage
 from backend.ai_insights import generate_ai_summary_sync
 from backend.data_cleaner import detect_and_remove_metadata_rows
@@ -222,14 +223,45 @@ class TimeSheetProcessor:
                 .nunique()
             )
 
+                    # ============================
+        # NUEVA LÓGICA DE SCORING (INDIVIDUAL)
+        # ============================
         critical_count = sum(
             1 for err in errors if err["tipo_error"] in _CRITICAL_ERROR_TYPES
         )
-        warning_count = sum(
-            1 for err in errors if err["tipo_error"] in _WARNING_ERROR_TYPES
-        )
-        penalty = critical_count * 10 + warning_count * 2
+
+        warning_types = [
+            err["tipo_error"] for err in errors
+            if err["tipo_error"] in _WARNING_ERROR_TYPES
+        ]
+
+        counter = Counter(warning_types)
+
+        penalty = 0
+
+        # 🔴 Errores críticos: SIEMPRE estrictos
+        penalty += critical_count * 10
+
+        # 🧠 Duplicidad: penalizar POR PATRÓN, no por fila
+        if counter.get("duplicado_exacto", 0) > 0:
+            penalty += 10   # copy-paste fuerte
+
+        if counter.get("duplicado_similar", 0) > 0:
+            penalty += 6
+
+        if counter.get("descripcion_repetida", 0) > 0:
+            penalty += 6
+
+        # ✍️ Calidad de descripción: leve y progresivo
+        penalty += min(counter.get("descripcion_calidad", 0), 10)
+
+        # 📦 Otros warnings
+        penalty += counter.get("proyecto_inconsistente", 0) * 2
+
         quality_score = max(0.0, min(100.0, 100.0 - penalty))
+
+        warning_count = sum(counter.values())
+
 
         return ProcessorSummary(
             total_registros=len(df),
@@ -409,6 +441,13 @@ class TimeSheetProcessor:
         client_profile_settings: Optional[Dict[str, Any]] = None,
     ) -> ProcessorResult:
         df = parsed_sheet.dataframe.copy()
+        # 🧹 Normalizar columna de fecha (quitar hora)
+        if mapping.date in df.columns:
+            df[mapping.date] = pd.to_datetime(
+                df[mapping.date],
+                errors="coerce"
+            ).dt.date
+
         metadata = dict(getattr(parsed_sheet, "metadata", {}) or {})
         profile_settings = dict(client_profile_settings or {})
         metadata.setdefault("source_name", source_name)

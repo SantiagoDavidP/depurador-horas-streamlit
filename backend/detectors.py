@@ -99,3 +99,34 @@ def resolve_employee(metadata: Dict[str, object], filename: str) -> Dict[str, Op
         "filename": employee_from_filename,
         "final": employee_metadata or employee_from_filename,
     }
+
+def detect_profile_from_dataframe(
+    df_columns: Iterable[str],
+    profiles: Sequence[ClientProfile],
+    *,
+    min_score: int = 2,
+) -> Optional[str]:
+    """
+    Detecta el perfil comparando columnas reales del dataframe vs columnas esperadas
+    en cada perfil.
+    """
+    cols = {_normalize(str(c)) for c in df_columns if c}
+
+    best_id = None
+    best_score = 0
+
+    for profile in profiles:
+        mapping = profile.mapping or {}
+        expected = {_normalize(str(v)) for v in mapping.values() if v}
+
+        # score por coincidencias exactas
+        score = sum(1 for e in expected if e in cols)
+
+        if score > best_score:
+            best_score = score
+            best_id = profile.client_id
+
+    if best_score >= min_score:
+        return best_id
+    return None
+

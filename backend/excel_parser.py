@@ -1,4 +1,7 @@
 from __future__ import annotations
+from backend.models import ColumnMapping
+import pandas as pd
+from typing import Optional
 
 import logging
 from dataclasses import dataclass, field
@@ -7,7 +10,6 @@ from io import BytesIO
 from typing import Dict, Iterable, List, Optional
 import re
 
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -549,3 +551,127 @@ def load_sheet_with_header(
         sheet_name=target_sheet,
         metadata=metadata,
     )
+
+    
+# ==========================================
+# FUNCIÓN NUEVA: AÑADIDA AL FINAL CORRECTAMENTE
+# ==========================================
+
+def load_multiple_sheets(
+    excel_bytes: bytes,
+    *,
+    header_keywords: Optional[List[str]] = None,
+    auto_correct_period: bool = True,
+) -> List[ParsedSheet]:
+    """
+    Carga TODAS las hojas del Excel, EXCEPTO la hoja 'Resumen'.
+    """
+    results: List[ParsedSheet] = []
+    
+    # 1. Obtener nombres de las hojas
+    try:
+        sheet_names = list_sheets(excel_bytes)
+    except Exception as e:
+        logger.error(f"Error listando hojas: {e}")
+        return []
+
+    logger.info(f"Hojas encontradas: {sheet_names}")
+
+    # 2. Recorrer y filtrar
+    for name in sheet_names:
+        try:
+            # --- FILTRO MAESTRO ---
+            # Si el nombre contiene "resumen", lo ignoramos porque nosotros generaremos uno nuevo.
+            if "resumen" in name.lower():
+                logger.info(f"🚫 Ignorando hoja '{name}' (es el resumen viejo).")
+                continue
+            
+            # Opcional: Ignorar hojas ocultas o de sistema
+            if name.startswith("_") or "consolidado" in name.lower():
+                continue
+
+            # 3. Procesar hoja de Empleado (Miguel, Bryan, etc.)
+            logger.info(f"Intentando cargar hoja de empleado: {name}")
+            
+            parsed = load_sheet_with_header(
+                excel_bytes,
+                sheet_name=name,  # Forzamos esta hoja específica
+                header_keywords=header_keywords,
+                auto_correct_period=auto_correct_period
+            )
+            
+            # Solo guardamos si tiene datos (filas > 0)
+            if not parsed.dataframe.empty and len(parsed.dataframe) > 0:
+                # Si la metadata no trajo el nombre del empleado, usamos el nombre de la hoja
+                if "employee" not in parsed.metadata:
+                    parsed.metadata["employee"] = name
+                
+                results.append(parsed)
+                logger.info(f"✅ Empleado '{name}' cargado correctamente.")
+            
+        except Exception as exc:
+            # Si falla (porque no tiene columnas de Fecha/Horas), asumimos que no es un timesheet
+            logger.warning(f"⚠️ La hoja '{name}' no parece un timesheet válido. Se omite.")
+
+    return results
+
+def infer_column_mapping(df: pd.DataFrame, profile_mapping: dict) -> Optional[ColumnMapping]:
+    """
+    Intenta inferir el mapeo de columnas aunque el Excel no siga exactamente la plantilla.
+    Hace matching robusto: ignora mayúsculas/espacios y resuelve contra columnas reales.
+    """
+
+    def norm(x: object) -> str:
+        return re.sub(r"\s+", " ", str(x).strip().lower())
+
+    cols = list(df.columns)
+    cols_norm = {norm(c): c for c in cols}  # normalizado -> nombre real
+
+    def resolve_by_profile(expected: Optional[str]) -> Optional[str]:
+        """Busca la columna REAL del df que corresponde al nombre esperado del perfil."""
+        if not expected:
+            return None
+        e = norm(expected)
+
+        # match exacto normalizado
+        if e in cols_norm:
+            return cols_norm[e]
+
+        # match por contención (por si viene "fecha_1", "fecha (dd/mm)", etc.)
+        for c in cols:
+            if e in norm(c):
+                return c
+        return None
+
+    def find_col(possible_names: List[str]) -> Optional[str]:
+        """Busca por keywords dentro de las columnas reales."""
+        poss = [norm(p) for p in possible_names]
+        for c in cols:
+            cl = norm(c)
+            if any(p in cl for p in poss):
+                return c
+        return None
+
+    # ✅ Agregamos "tareas/tarea" para BANINTER
+    date_col    = find_col(["fecha", "date", "día", "dia"])
+    hours_col   = find_col(["hora", "horas", "hours", "tiempo"])
+    desc_col    = find_col(["descripcion", "descripción", "actividad", "detalle", "task", "tareas", "tarea"])
+    project_col = find_col(["proyecto", "tipo actividad", "project"])
+
+    # 🔁 Fallback al perfil, pero resuelto contra columnas reales
+    date_col    = date_col or resolve_by_profile(profile_mapping.get("date"))
+    hours_col   = hours_col or resolve_by_profile(profile_mapping.get("hours"))
+    desc_col    = desc_col or resolve_by_profile(profile_mapping.get("description"))
+    project_col = project_col or resolve_by_profile(profile_mapping.get("project"))
+
+    if not date_col or not hours_col or not desc_col:
+        return None
+
+    return ColumnMapping(
+        date=date_col,
+        hours=hours_col,
+        description=desc_col,
+        project=project_col,
+    )
+
+

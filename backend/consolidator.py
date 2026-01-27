@@ -268,9 +268,23 @@ class TimeSheetConsolidator:
         # Usar valores específicos del colaborador si están disponibles
         valor_tarifa = rate_info["salario_mensual"]
         valor_hora_extra = rate_info["valor_hora_extra"]
-        dias_laborables = rate_info["dias_laborables_mes"]
-        valor_dia = rate_info["valor_diario"]
-        
+        # Días laborables: prioridad → rates.json → metadata → cálculo automático
+        dias_laborables = rate_info.get("dias_laborables_mes")
+
+        if not dias_laborables:
+            dias_laborables = self._calcular_dias_laborables(
+                metadata.get("year"),
+                metadata.get("month_name"),
+            )
+            logger.info(
+                "Dias laborables calculados automaticamente para %s: %d",
+                nombre,
+                dias_laborables,
+            )
+
+        # Valor por día SIEMPRE se recalcula de forma segura
+        valor_dia = valor_tarifa / dias_laborables
+
         # Log si se encontró configuración personalizada
         if rate_info["found_by_name"]:
             logger.info(
