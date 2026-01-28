@@ -2,7 +2,7 @@ from __future__ import annotations
 from backend.models import ColumnMapping
 import pandas as pd
 from typing import Optional
-
+from openpyxl import load_workbook  # <--- AGREGAR ESTO EN TUS IMPORTS
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -449,7 +449,6 @@ def _remove_junk_rows(df: pd.DataFrame) -> pd.DataFrame:
         logger.info("Filas de metadata removidas automaticamente: %s", removed)
     return cleaned
 
-
 def load_sheet_with_header(
     excel_bytes: bytes,
     sheet_name: Optional[str] = None,
@@ -459,29 +458,20 @@ def load_sheet_with_header(
     auto_correct_period: bool = True,
 ) -> ParsedSheet:
     """
-    Carga una hoja especifica o detecta automaticamente la mejor opcion y el encabezado.
-
-    Args:
-        excel_bytes: Bytes del archivo Excel
-        sheet_name: Nombre de la hoja (None para auto-detección)
-        header_row: Fila del encabezado (None para auto-detección)
-        header_keywords: Keywords adicionales para detectar encabezado
-        auto_correct_period: Si True, corrige automáticamente el periodo usando datos reales (lógica de mayoría)
-
-    Returns:
-        ParsedSheet con metadata corregida si auto_correct_period=True
+    Carga hoja, limpia, arregla fechas y RECONSTRUYE EL PERIODO DESDE LOS DATOS (Autoridad Total).
     """
+    # ---------------------------------------------------------
+    # 1. Carga y Detección Básica
+    # ---------------------------------------------------------
     with pd.ExcelFile(BytesIO(excel_bytes), engine="openpyxl") as xls:
         target_sheet = (
-            sheet_name
-            if sheet_name is not None
+            sheet_name if sheet_name is not None
             else _select_best_sheet_from_excel_file(xls, header_keywords)
         )
         temp_df = xls.parse(target_sheet, header=None)
 
     header_idx = (
-        header_row
-        if header_row is not None
+        header_row if header_row is not None
         else detect_header_row(temp_df, keywords=header_keywords)
     )
     metadata = _extract_metadata_rows(temp_df)
@@ -490,69 +480,156 @@ def load_sheet_with_header(
     data_df = temp_df.iloc[header_idx + 1 :].copy()
     raw_columns = temp_df.iloc[header_idx].tolist()
 
+    # ---------------------------------------------------------
+    # 🚨 FIX PREVENTIVO: Reparar Metadata Rota (Caso Víctor 2024)
+    # Antes de procesar nada, arreglamos el año absurdo.
+    # ---------------------------------------------------------
+    if "period_start" in metadata and "period_end" in metadata:
+        try:
+            m_start = pd.to_datetime(metadata["period_start"])
+            m_end = pd.to_datetime(metadata["period_end"])
+            
+            # Si Fin < Inicio, asumimos que el año de fin está mal y lo igualamos al de inicio
+            if m_end < m_start:
+                fixed_end = m_end.replace(year=m_start.year)
+                # Si sigue siendo menor (ej: Dic 2025 - Ene 2025), sumamos 1 año
+                if fixed_end < m_start:
+                    fixed_end = fixed_end.replace(year=m_start.year + 1)
+                
+                new_end_str = fixed_end.strftime("%Y-%m-%d")
+                metadata["period_end"] = new_end_str
+                metadata["period_source"] = "metadata_early_fix"
+                logger.info(f"✅ Metadata reparada preventivamente: {new_end_str}")
+        except: pass
+
+    # Normalización de columnas
     def _normalize_columns(columns: List[object]) -> List[str]:
         normalized: List[str] = []
         seen: Dict[str, int] = {}
         for col in columns:
-            if pd.isna(col):
-                col = ""
+            if pd.isna(col): col = ""
             col_str = str(col).strip()
-            if col_str in seen:
-                seen[col_str] += 1
-                col_str = f"{col_str}_{seen[col_str]}"
-            else:
-                seen[col_str] = 0
+            if col_str in seen: seen[col_str] += 1; col_str = f"{col_str}_{seen[col_str]}"
+            else: seen[col_str] = 0
             normalized.append(col_str)
         return normalized
 
     normalized_columns = _normalize_columns(raw_columns)
     data_df.columns = normalized_columns
 
-    # Si el perfil trae header_keywords pero las columnas resultantes no coinciden,
-    # reintentar con la fila que tenga más coincidencias de esas keywords (BANINTER).
+    # Reintento de Header
     if header_keywords:
         hk = [str(k).lower().strip() for k in header_keywords if k]
-        current_matches = sum(1 for k in hk if k in [c.lower().strip() for c in normalized_columns])
-        required_matches = max(2, len(hk) // 2)
-        if current_matches < required_matches:
-            best_row = header_idx
-            best_match = current_matches
+        curr = sum(1 for k in hk if k in [c.lower().strip() for c in normalized_columns])
+        if curr < max(2, len(hk) // 2):
+            best_r, best_m = header_idx, curr
             for idx, row in temp_df.iterrows():
-                row_values = [str(val).strip().lower() for val in row if pd.notna(val)]
-                matches = sum(1 for k in hk if k in row_values)
-                if matches > best_match:
-                    best_match = matches
-                    best_row = idx
-            if best_row != header_idx and best_match >= required_matches:
-                header_idx = best_row
+                m = sum(1 for k in hk if k in [str(v).lower() for v in row if pd.notna(v)])
+                if m > best_m: best_r, best_m = idx, m
+            if best_r != header_idx and best_m >= max(2, len(hk) // 2):
+                header_idx = best_r
                 metadata["header_row"] = header_idx
-                data_df = temp_df.iloc[header_idx + 1 :].copy()
-                raw_columns = temp_df.iloc[header_idx].tolist()
-                normalized_columns = _normalize_columns(raw_columns)
+                data_df = temp_df.iloc[best_r + 1 :].copy()
                 data_df.columns = normalized_columns
+
     data_df = _remove_junk_columns(data_df)
     data_df = _remove_junk_rows(data_df)
     data_df = data_df.dropna(how="all")
 
-    # CORRECCIÓN INTELIGENTE: Usar datos reales para corregir periodo si está habilitado
-    if auto_correct_period:
-        metadata = correct_period_from_data(data_df, metadata)
+    # ---------------------------------------------------------
+    # 2. CAZAFANTASMAS: Limpiar filas vacías
+    # ---------------------------------------------------------
+    date_col = _detect_date_column(data_df)
+    hours_col = None
+    for c in data_df.columns:
+        if any(x in str(c).lower() for x in ["hora", "hours", "tiempo"]):
+            hours_col = c
+            break
+            
+    if date_col and hours_col:
+        rows_before = len(data_df)
+        data_df = data_df.dropna(subset=[date_col, hours_col], how='all')
+        mask_ghost = (
+            (data_df[date_col].isna() | (data_df[date_col].astype(str).str.strip() == '')) &
+            (data_df[hours_col].isna() | (data_df[hours_col] == 0))
+        )
+        data_df = data_df[~mask_ghost]
+        if len(data_df) != rows_before:
+            logger.info(f"👻 Filas fantasma eliminadas: {rows_before - len(data_df)}")
 
+    # ---------------------------------------------------------
+    # 3. CORRECCIÓN AVANZADA DE FECHAS (El FIX de Johanna)
+    # ---------------------------------------------------------
+    if date_col:
+        try:
+            # Forzar dayfirst=True para arreglar formato Latino
+            data_df[date_col] = pd.to_datetime(data_df[date_col], dayfirst=True, errors='coerce')
+            
+            series = data_df[date_col]
+            unique_months = series.dt.to_period("M").nunique()
+            
+            # Inversión Heurística (Si hay muchos meses dispersos)
+            if unique_months > 2:
+                logger.warning(f"⚠️ Dispersión alta ({unique_months} meses). Chequeando inversión...")
+                mask_swap = (series.dt.day <= 12) & series.notna()
+                if mask_swap.any():
+                    subset = series[mask_swap]
+                    swap_df = pd.DataFrame({'year': subset.dt.year, 'month': subset.dt.day, 'day': subset.dt.month})
+                    candidate = series.copy()
+                    candidate.loc[swap_df.index] = pd.to_datetime(swap_df)
+                    if candidate.dt.to_period("M").nunique() < unique_months:
+                        data_df[date_col] = candidate
+                        logger.info("🔄 SWAP APLICADO POR COHERENCIA DE DATOS.")
+
+            data_df[date_col] = data_df[date_col].dt.strftime('%Y-%m-%d')
+            
+        except Exception as e:
+            logger.warning(f"Error procesando fechas: {e}")
+
+    # ---------------------------------------------------------
+    # 4. 🔥 AUTORIDAD DE DATOS FINAL: Reconstruir Periodo desde 'Fecha' 🔥
+    # ---------------------------------------------------------
+    # Este paso es clave: Sobrescribe la metadata con lo que realmente dicen los datos.
+    # Arregla el caso de "30 de Octubre" cuando hay datos del "31".
+    if auto_correct_period and date_col and not data_df.empty:
+        try:
+            real_dates = pd.to_datetime(data_df[date_col], errors='coerce').dropna()
+            
+            if not real_dates.empty:
+                # 1. Calculamos el mes real predominante
+                mode_year = real_dates.dt.year.mode()[0]
+                mode_month = real_dates.dt.month.mode()[0]
+                
+                # 2. Calculamos el último día teórico de ese mes (ej: 31)
+                import calendar
+                last_day = calendar.monthrange(mode_year, mode_month)[1]
+                
+                new_start = datetime(mode_year, mode_month, 1).strftime("%Y-%m-%d")
+                new_end = datetime(mode_year, mode_month, last_day).strftime("%Y-%m-%d")
+                
+                # 3. Forzamos la actualización de la metadata
+                metadata["period_start"] = new_start
+                metadata["period_end"] = new_end
+                metadata["month_name"] = datetime(mode_year, mode_month, 1).strftime("%B")
+                metadata["year"] = mode_year
+                metadata["period_source"] = "data_authority_final"
+                
+                logger.info(f"✅ Periodo Autoridad Datos: {new_start} al {new_end}")
+
+        except Exception as e:
+            logger.error(f"Error reconstruyendo periodo final: {e}")
+
+    # ---------------------------------------------------------
+    # 5. Retorno
+    # ---------------------------------------------------------
     row_offset = header_idx + 2
     original_row_numbers = [row_offset + idx for idx in range(len(data_df))]
     data_df = data_df.reset_index(drop=True)
     data_df.attrs["original_row_numbers"] = original_row_numbers
     data_df.attrs["source_metadata"] = metadata
 
-    return ParsedSheet(
-        dataframe=data_df,
-        header_row=header_idx,
-        row_offset=row_offset,
-        sheet_name=target_sheet,
-        metadata=metadata,
-    )
+    return ParsedSheet(data_df, header_idx, row_offset, target_sheet, metadata)
 
-    
 # ==========================================
 # FUNCIÓN NUEVA: AÑADIDA AL FINAL CORRECTAMENTE
 # ==========================================
@@ -564,33 +641,53 @@ def load_multiple_sheets(
     auto_correct_period: bool = True,
 ) -> List[ParsedSheet]:
     """
-    Carga TODAS las hojas del Excel, EXCEPTO la hoja 'Resumen'.
+    Carga TODAS las hojas VISIBLES del Excel, EXCEPTO la hoja 'Resumen'.
+    Ignora hojas ocultas (Hidden/VeryHidden).
     """
     results: List[ParsedSheet] = []
     
-    # 1. Obtener nombres de las hojas
+    # ---------------------------------------------------------
+    # 1. Obtener SOLO nombres de hojas VISIBLES usando openpyxl
+    # ---------------------------------------------------------
+    visible_sheet_names = []
     try:
-        sheet_names = list_sheets(excel_bytes)
+        # Usamos read_only=True para que sea rápido, solo queremos metadatos
+        wb = load_workbook(BytesIO(excel_bytes), read_only=True)
+        
+        for sheet in wb.worksheets:
+            # sheet_state puede ser 'visible', 'hidden' o 'veryHidden'
+            if sheet.sheet_state == 'visible':
+                visible_sheet_names.append(sheet.title)
+            else:
+                logger.info(f"🙈 Ignorando hoja oculta: '{sheet.title}'")
+                
+        wb.close()
     except Exception as e:
-        logger.error(f"Error listando hojas: {e}")
-        return []
+        logger.error(f"Error filtrando hojas ocultas: {e}")
+        # Fallback: si falla openpyxl, usamos pandas (aunque traerá las ocultas)
+        try:
+            visible_sheet_names = list_sheets(excel_bytes)
+        except:
+            return []
 
-    logger.info(f"Hojas encontradas: {sheet_names}")
+    logger.info(f"Hojas visibles a procesar: {visible_sheet_names}")
 
+    # ---------------------------------------------------------
     # 2. Recorrer y filtrar
-    for name in sheet_names:
+    # ---------------------------------------------------------
+    for name in visible_sheet_names:
         try:
             # --- FILTRO MAESTRO ---
-            # Si el nombre contiene "resumen", lo ignoramos porque nosotros generaremos uno nuevo.
+            # Si el nombre contiene "resumen", lo ignoramos.
             if "resumen" in name.lower():
                 logger.info(f"🚫 Ignorando hoja '{name}' (es el resumen viejo).")
                 continue
             
-            # Opcional: Ignorar hojas ocultas o de sistema
+            # Opcional: Ignorar hojas de sistema/temporales
             if name.startswith("_") or "consolidado" in name.lower():
                 continue
 
-            # 3. Procesar hoja de Empleado (Miguel, Bryan, etc.)
+            # 3. Procesar hoja de Empleado
             logger.info(f"Intentando cargar hoja de empleado: {name}")
             
             parsed = load_sheet_with_header(
@@ -617,8 +714,8 @@ def load_multiple_sheets(
 
 def infer_column_mapping(df: pd.DataFrame, profile_mapping: dict) -> Optional[ColumnMapping]:
     """
-    Intenta inferir el mapeo de columnas aunque el Excel no siga exactamente la plantilla.
-    Hace matching robusto: ignora mayúsculas/espacios y resuelve contra columnas reales.
+    Intenta inferir el mapeo de columnas dando PRIORIDAD EXPLICITA al perfil configurado.
+    Si el perfil falla, usa heurísticas.
     """
 
     def norm(x: object) -> str:
@@ -633,11 +730,11 @@ def infer_column_mapping(df: pd.DataFrame, profile_mapping: dict) -> Optional[Co
             return None
         e = norm(expected)
 
-        # match exacto normalizado
+        # 1. Match exacto normalizado
         if e in cols_norm:
             return cols_norm[e]
 
-        # match por contención (por si viene "fecha_1", "fecha (dd/mm)", etc.)
+        # 2. Match por contención estricta (útil si el Excel trae "Actividad (Detalle)")
         for c in cols:
             if e in norm(c):
                 return c
@@ -646,24 +743,40 @@ def infer_column_mapping(df: pd.DataFrame, profile_mapping: dict) -> Optional[Co
     def find_col(possible_names: List[str]) -> Optional[str]:
         """Busca por keywords dentro de las columnas reales."""
         poss = [norm(p) for p in possible_names]
-        for c in cols:
-            cl = norm(c)
-            if any(p in cl for p in poss):
-                return c
+        
+        # MEJORA: Iterar primero por keywords, luego por columnas.
+        # Esto asegura que si buscamos "actividad" antes que "descripcion", 
+        # encuentre "actividad" aunque esté en una columna posterior.
+        for p in poss:
+            for c in cols:
+                cl = norm(c)
+                if p in cl:
+                    return c
         return None
 
-    # ✅ Agregamos "tareas/tarea" para BANINTER
-    date_col    = find_col(["fecha", "date", "día", "dia"])
-    hours_col   = find_col(["hora", "horas", "hours", "tiempo"])
-    desc_col    = find_col(["descripcion", "descripción", "actividad", "detalle", "task", "tareas", "tarea"])
-    project_col = find_col(["proyecto", "tipo actividad", "project"])
+    # --- CAMBIO CLAVE AQUÍ ---
+    # 1. Intentar resolver usando el mapeo del perfil (JSON) PRIMERO
+    date_col    = resolve_by_profile(profile_mapping.get("date"))
+    hours_col   = resolve_by_profile(profile_mapping.get("hours"))
+    desc_col    = resolve_by_profile(profile_mapping.get("description"))
+    project_col = resolve_by_profile(profile_mapping.get("project"))
 
-    # 🔁 Fallback al perfil, pero resuelto contra columnas reales
-    date_col    = date_col or resolve_by_profile(profile_mapping.get("date"))
-    hours_col   = hours_col or resolve_by_profile(profile_mapping.get("hours"))
-    desc_col    = desc_col or resolve_by_profile(profile_mapping.get("description"))
-    project_col = project_col or resolve_by_profile(profile_mapping.get("project"))
+    # 2. Si no se encontró en el perfil, usar heurísticas (Auto-detección)
+    # Nota: He reordenado las keywords para poner "actividad" antes que "descripcion" por si acaso.
+    if not date_col:
+        date_col = find_col(["fecha", "date", "día", "dia"])
+    
+    if not hours_col:
+        hours_col = find_col(["hora", "horas", "hours", "tiempo"])
+    
+    if not desc_col:
+        # Aquí "actividad" va primero para darle preferencia en la búsqueda heurística
+        desc_col = find_col(["actividad", "task", "tareas", "tarea", "descripcion", "descripción", "detalle"])
+    
+    if not project_col:
+        project_col = find_col(["proyecto", "tipo actividad", "project"])
 
+    # Validación final
     if not date_col or not hours_col or not desc_col:
         return None
 
@@ -673,5 +786,3 @@ def infer_column_mapping(df: pd.DataFrame, profile_mapping: dict) -> Optional[Co
         description=desc_col,
         project=project_col,
     )
-
-

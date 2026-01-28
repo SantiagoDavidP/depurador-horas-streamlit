@@ -217,36 +217,63 @@ def render_holiday_block(
 ) -> None:
     info = None
 
-    if metadata and metadata.get("period_start") and metadata.get("period_end"):
-        info = holiday_detector.detect_period_holidays(
-            metadata.get("period_start"),
-            metadata.get("period_end")
-        )
-    elif date_column and date_column in dataframe.columns and not dataframe.empty:
+    # 🔹 PRIORIDAD 1: Datos reales del DataFrame (SIEMPRE más confiable)
+    if date_column and date_column in dataframe.columns and not dataframe.empty:
         try:
             info = holiday_detector.detect_month_holidays(dataframe, date_column)
+            logger.info(f"✅ Feriados detectados desde datos reales: {info.month_name} {info.year}")
         except Exception as exc:
-            logger.warning("No se pudieron detectar feriados: %s", exc)
+            logger.warning(f"⚠️ No se pudieron detectar feriados desde datos: {exc}")
+            
+            # 🔹 PRIORIDAD 2: Metadata como fallback SOLO si los datos fallan
+            if metadata and metadata.get("period_start") and metadata.get("period_end"):
+                try:
+                    info = holiday_detector.detect_period_holidays(
+                        metadata.get("period_start"),
+                        metadata.get("period_end")
+                    )
+                    logger.info(f"✅ Feriados detectados desde metadata (fallback): {info.month_name} {info.year}")
+                except Exception as exc2:
+                    logger.warning(f"⚠️ Metadata también falló: {exc2}")
+                    return
+            else:
+                return
+    
+    # Si NO hay columna de fecha, pero SÍ hay metadata válida
+    elif metadata and metadata.get("period_start") and metadata.get("period_end"):
+        try:
+            info = holiday_detector.detect_period_holidays(
+                metadata.get("period_start"),
+                metadata.get("period_end")
+            )
+            logger.info(f"✅ Feriados detectados desde metadata: {info.month_name} {info.year}")
+        except Exception as exc:
+            logger.warning(f"⚠️ Error usando metadata: {exc}")
             return
+    else:
+        # No hay suficiente información
+        return
 
     if not info or info.month is None or info.year is None:
         return
 
-    st.markdown(f"### {title}")
-
+    # Preparar la etiqueta del mes
     month_label = info.month_name or str(info.month)
     if str(info.year) not in month_label:
         month_label = f"{month_label} {info.year}"
 
-    st.markdown(f"**Mes:** {month_label}")
+    # =========================================================
+    # 🎨 UI: Usar st.expander para hacerlo desplegable
+    # =========================================================
+    with st.expander(title, expanded=False):
+        st.markdown(f"**Mes analizado:** {month_label}")
 
-    if not info.holidays:
-        st.caption("Sin feriados registrados para este mes.")
-        return
+        if not info.holidays:
+            st.caption("✅ Sin feriados registrados para este mes.")
+            return
 
-    for holiday in info.holidays:
-        st.markdown(f"🗓️ **{holiday['date']}** — {holiday['name']}")
-
+        for holiday in info.holidays:
+            st.markdown(f"🗓️ **{holiday['date']}** — {holiday['name']}")
 
 
 def render_validation_settings() -> Tuple[int, int, float, bool]:
@@ -651,16 +678,13 @@ def run_batch_mode(
     batch_state: Dict[str, object],
     correct_spelling: bool,
     employee_role: str,
+    similarity_threshold: int,
+    min_duplicates: int,
+    tolerance_factor: float,
+    show_time_suggestions: bool,
 ) -> None:
-    render_section_header(
-        "Procesamiento por lotes",
-        icon="📦",
-        description="Procesa múltiples archivos",
-    )
 
-    similarity_threshold, min_duplicates, tolerance_factor, show_time_suggestions = (
-        render_validation_settings()
-    )
+
     uploaded_files: List = batch_state.get("files") or []
 
     if not uploaded_files:
@@ -819,17 +843,22 @@ def run_batch_mode(
         st.session_state["batch_mapping"] = base_mapping
         st.rerun()
 
+    if st.session_state.get("batch_results"):
+        render_batch_results()
+
 
 # =========================
 # RESULTADOS
 # =========================
-batch_results: List[BatchFileResult] = st.session_state.get(
-    "batch_results", []
-)
+def render_batch_results():
+    batch_results: List[BatchFileResult] = st.session_state.get(
+        "batch_results", []
+    )
 
-if not batch_results:
-    st.info("📋 Presiona el botón para iniciar.")
-else:
+    if not batch_results:
+        st.info("📋 Presiona el botón para iniciar.")
+        return
+
     success_count = sum(1 for r in batch_results if r.success)
     render_divider()
     render_section_header(
@@ -1305,6 +1334,14 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
 # APP SHELL (SIDEBAR + ROUTER)
 # =============================================================================
 with st.sidebar:
+
+    # Solo mostrar este bloque si el usuario está en "Por lotes"
+    if st.session_state.get("processing_mode") == "Por lotes":
+        render_section_header("Procesamiento por lotes", icon="📦", description="Procesa múltiples archivos")
+        similarity_threshold, min_duplicates, tolerance_factor, show_time_suggestions = render_validation_settings()
+    else:
+        similarity_threshold = min_duplicates = tolerance_factor = show_time_suggestions = None
+
     st.markdown("### 🎨 Apariencia")
     render_theme_toggle()
     st.markdown("---")
@@ -1346,7 +1383,15 @@ if processing_mode == "Por lotes":
     if batch_sidebar_state is None:
         st.error("Error de configuración.")
     else:
-        run_batch_mode(batch_state=batch_sidebar_state, correct_spelling=correct_spelling, employee_role=employee_role)
+        run_batch_mode(
+            batch_state=batch_sidebar_state,
+            correct_spelling=correct_spelling,
+            employee_role=employee_role,
+            similarity_threshold=similarity_threshold,
+            min_duplicates=min_duplicates,
+            tolerance_factor=tolerance_factor,
+            show_time_suggestions=show_time_suggestions,
+        )
 else:
     run_individual_multisheet(correct_spelling=correct_spelling, employee_role=employee_role)
 

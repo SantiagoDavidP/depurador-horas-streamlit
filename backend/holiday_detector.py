@@ -99,40 +99,60 @@ class HolidayDetector:
         return fallback, "fallback"
 
     def detect_period_holidays(
-        self,
-        period_start: Optional[str],
-        period_end: Optional[str],
-    ) -> HolidayInfo:
-        if not period_start or not period_end:
-            return HolidayInfo(None, None, None, [], "sin_periodo")
-        try:
-            start_date = date.fromisoformat(str(period_start)[:10])
-            end_date = date.fromisoformat(str(period_end)[:10])
-        except ValueError:
-            return HolidayInfo(None, None, None, [], "periodo_invalido")
+            self,
+            period_start: Optional[str],
+            period_end: Optional[str],
+        ) -> HolidayInfo:
+            if not period_start or not period_end:
+                return HolidayInfo(None, None, None, [], "sin_periodo")
+            try:
+                start_date = date.fromisoformat(str(period_start)[:10])
+                end_date = date.fromisoformat(str(period_end)[:10])
+            except ValueError:
+                return HolidayInfo(None, None, None, [], "periodo_invalido")
 
-        years = range(start_date.year, end_date.year + 1)
-        collected: List[Dict[str, str]] = []
-        source = "fallback"
-        for year in years:
-            if holidays is not None:
-                try:
-                    ec_holidays = holidays.Ecuador(years=year)  # type: ignore[attr-defined]
-                    for dt, name in ec_holidays.items():
-                        if start_date <= dt <= end_date:
-                            collected.append({"date": dt.isoformat(), "name": name})
-                            source = "holidays_lib"
-                except Exception as exc:  # pragma: no cover
-                    logger.warning("Fallo consultando holidays para rango: %s", exc)
+            # ==============================================================================
+            # 🛡️ PROTECCIÓN CONTRA RANGOS IMPOSIBLES (FIX VÍCTOR JARAMILLO)
+            # ==============================================================================
+            # Si el usuario pone el fin ANTES del inicio (ej: Inicio 2025, Fin 2024),
+            # usamos solo el año de inicio para evitar que el sistema falle.
+            # En cualquier otro caso normal, calculamos el rango de años correctamente.
+            if end_date.year < start_date.year:
+                years = [start_date.year]
+            else:
+                years = list(range(start_date.year, end_date.year + 1))
+            # ==============================================================================
 
-        if not collected:
-            for m, day, name in FALLBACK_EC_HOLIDAYS:
-                try:
-                    candidate = date(years[0], m, day)
-                except ValueError:
-                    continue
-                if start_date <= candidate <= end_date:
-                    collected.append({"date": candidate.isoformat(), "name": name})
+            collected: List[Dict[str, str]] = []
+            source = "fallback"
+            
+            for year in years:
+                if holidays is not None:
+                    try:
+                        ec_holidays = holidays.Ecuador(years=year)  # type: ignore[attr-defined]
+                        for dt, name in ec_holidays.items():
+                            # Validamos que la fecha esté dentro del rango real
+                            # O si el rango estaba invertido (error usuario), validamos solo contra el mes/año de inicio
+                            in_range = start_date <= dt <= end_date
+                            in_corrected_year = (end_date < start_date and dt.year == start_date.year and dt.month == start_date.month)
+                            
+                            if in_range or in_corrected_year:
+                                collected.append({"date": dt.isoformat(), "name": name})
+                                source = "holidays_lib"
+                    except Exception as exc:  # pragma: no cover
+                        logger.warning("Fallo consultando holidays para rango: %s", exc)
 
-        month_name = start_date.strftime("%B %Y")
-        return HolidayInfo(start_date.month, start_date.year, month_name, collected, source)
+            if not collected:
+                # Usamos years[0] con seguridad porque la lista nunca estará vacía ahora
+                current_year = years[0]
+                for m, day, name in FALLBACK_EC_HOLIDAYS:
+                    try:
+                        candidate = date(current_year, m, day)
+                    except ValueError:
+                        continue
+                    
+                    if start_date <= candidate <= end_date:
+                        collected.append({"date": candidate.isoformat(), "name": name})
+
+            month_name = start_date.strftime("%B %Y")
+            return HolidayInfo(start_date.month, start_date.year, month_name, collected, source)
