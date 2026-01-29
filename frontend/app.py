@@ -968,7 +968,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         st.error("❌ No se detectaron hojas válidas con datos.")
         return
 
-    # 🔹 FILTRAR HOJAS BASURA (genéricas de Excel sin metadata válida)
+    # 🔹 FILTRAR HOJAS BASURA
     filtered_sheets = []
     skipped_generic_sheets = []
 
@@ -976,18 +976,15 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         sheet_name_lower = sheet.sheet_name.lower()
         metadata = sheet.metadata or {}
         
-        # ⚠️ Ignorar hojas genéricas SIN metadata de cliente/empleado
         is_generic_name = sheet_name_lower in ["hoja1", "sheet1", "hoja", "sheet", "hoja 1", "sheet 1"]
         has_no_metadata = not metadata.get("company") and not metadata.get("employee")
         
         if is_generic_name and has_no_metadata:
             skipped_generic_sheets.append(sheet.sheet_name)
-            logger.warning(f"🗑️ Ignorando hoja genérica sin metadata: '{sheet.sheet_name}'")
             continue
         
         filtered_sheets.append(sheet)
 
-    # Mostrar hojas ignoradas si existen
     if skipped_generic_sheets:
         with st.expander("🗑️ Hojas ignoradas (sin metadata)", expanded=False):
             for name in skipped_generic_sheets:
@@ -997,13 +994,8 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         st.error("❌ No se encontraron hojas con datos válidos de timesheet.")
         return
 
-    # Usar solo hojas filtradas
     all_parsed_sheets = filtered_sheets
-
     num_consultores = len(all_parsed_sheets)
-
-
-
 
     if num_consultores > 1:
         st.success(f"✅ Se detectaron **{num_consultores} empleados**.")
@@ -1020,13 +1012,9 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             cl = str(col).lower()
             if any(k in cl for k in keywords):
                 return col
-
-        # ⚠️ Solo usar fallback si se permite explícitamente
         if fallback_index is not None and 0 <= fallback_index < len(columns):
             return columns[fallback_index]
-
         return None
-
 
     mapping = ColumnMapping(
         date=find_col(["fecha", "date"]),
@@ -1038,34 +1026,23 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
     profiles = list(get_profile_catalog().values())
     auto_profile_id = auto_detect_profile(source_name, getattr(first_sheet, "metadata", {}), profiles)
 
-    # 🔹 FALLBACK: Detección manual si auto_detect falla
     if not auto_profile_id:
         metadata = getattr(first_sheet, "metadata", {})
         company = str(metadata.get("company", "")).lower()
-        
-        # Buscar en todos los perfiles
         for profile in profiles:
-            # Buscar por nombre
             if profile.name.lower() in company:
                 auto_profile_id = profile.client_id
                 st.success(f"🎯 Cliente detectado (por nombre): **{profile.name}**")
                 break
-            
-            # Buscar por aliases (con fix de tipo)
             aliases = profile.company_aliases or []
-            if isinstance(aliases, str):
-                aliases = [aliases]
-            
+            if isinstance(aliases, str): aliases = [aliases]
             for alias in aliases:
                 if str(alias).lower() in company:
                     auto_profile_id = profile.client_id
                     st.success(f"🎯 Cliente detectado (por alias): **{profile.name}**")
                     break
-            
-            if auto_profile_id:
-                break
+            if auto_profile_id: break
 
-    # Defaults
     selected_settings = {
         "correct_spelling": True,
         "duplicate_similarity_threshold": 90,
@@ -1087,12 +1064,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             similarity = st.slider("🔍 Sensibilidad Duplicados", 70, 100, int(selected_settings["duplicate_similarity_threshold"]))
         with c2:
             tolerance = st.slider("⏰ Tolerancia Horas", 1.0, 3.0, float(selected_settings["hours_tolerance_factor"]))
-            min_duplicates = st.number_input(
-                "🔢 Mínimo repeticiones (Duplicados)",
-                min_value=1,
-                max_value=1000,
-                value=int(selected_settings.get("duplicate_min_occurrences", 3)),
-            )
+            min_duplicates = st.number_input("🔢 Mínimo repeticiones", min_value=1, max_value=1000, value=int(selected_settings.get("duplicate_min_occurrences", 3)))
             role_select = st.selectbox("👤 Rol", ["Consultor", "Developer", "Manager"], index=0)
 
         selected_settings["correct_spelling"] = bool(use_ia)
@@ -1101,7 +1073,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         selected_settings["hours_tolerance_factor"] = float(tolerance)
         selected_settings["role"] = str(role_select)
 
-# ------------------ PROCESS BUTTON ------------------
+    # ------------------ PROCESS BUTTON ------------------
     if st.button(f"🚀 PROCESAR {num_consultores} CONSULTORES", type="primary", use_container_width=True):
         st.session_state["batch_results_accumulator"] = None
         st.session_state["consolidated_result"] = None
@@ -1116,52 +1088,38 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             total_sheets = len(all_parsed_sheets)
 
             for i, sheet in enumerate(all_parsed_sheets):
-                # 🔹 VALIDAR METADATA ANTES DE PROCESAR
                 sheet_metadata = sheet.metadata or {}
                 emp_name = sheet_metadata.get("employee")
                 
-                # ⚠️ FILTRO CRÍTICO: Si no hay empleado válido, SKIP
                 if not emp_name:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
-                    logger.warning(f"🚫 Saltando hoja '{sheet.sheet_name}' - sin empleado detectado")
                     continue
                 
-                # ⚠️ Ignorar empleados con nombres genéricos
                 if emp_name.lower() in ["hoja1", "sheet1", "empleado", "consultor", "hoja", "sheet"]:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
-                    logger.warning(f"🚫 Saltando hoja '{sheet.sheet_name}' - nombre genérico: {emp_name}")
                     continue
+
                 progress_text.info(f"⏳ Procesando ({i+1}/{total_sheets}): {emp_name}")
                 progress_bar.progress(int((i / max(total_sheets, 1)) * 90))
 
-                # 🔹 mapping base del perfil (si existe)
                 profile_mapping = {}
                 if auto_profile_id:
                     detected_profile = next((p for p in profiles if p.client_id == auto_profile_id), None)
-                    if detected_profile:
-                        profile_mapping = detected_profile.mapping or {}
+                    if detected_profile: profile_mapping = detected_profile.mapping or {}
 
-                # 🔹 inferir mapping PARA ESTA HOJA
                 mapping_to_use = infer_column_mapping(sheet.dataframe, profile_mapping)
 
-                # ✅ Si NO es timesheet válido, se ignora
                 if mapping_to_use is None:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
-                    logger.warning(
-                        "🚫 Ignorando hoja '%s' (no es timesheet). Columnas: %s",
-                        sheet.sheet_name,
-                        cols_detectadas,
-                    )
                     continue
 
-                # 🔹 procesar hoja válida
                 result_single = processor.process_parsed_sheet(
                     parsed_sheet=sheet,
                     mapping=mapping_to_use,
-                    source_name=f"{source_name} :: {emp_name}",  # 🔹 USA emp_name validado
+                    source_name=f"{source_name} :: {emp_name}",
                     original_excel_bytes=None,
                     correct_spelling=bool(selected_settings["correct_spelling"]),
                     upload_to_blob=False,
@@ -1176,26 +1134,24 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
 
                 batch_results_accumulator.append(
                     BatchFileResult(
-                        file_name=f"{emp_name}.xlsx",  # ✅ usa empleado validado
+                        file_name=f"{emp_name}.xlsx",
                         success=True,
                         result=result_single,
-                        sheet_name=emp_name,  # ✅ nombre correcto
+                        sheet_name=emp_name,
                         client_id=auto_profile_id or "manual",
-                        metadata=sheet_metadata,  # ✅ metadata validada
+                        metadata=sheet_metadata,
                     )
                 )
 
-            # ✅ Mostrar hojas ignoradas (si las hay)
             if skipped_sheets:
-                with st.expander("🗂️ Hojas ignoradas (no eran timesheet)", expanded=False):
+                with st.expander("🗂️ Hojas ignoradas", expanded=False):
                     for name, cols in skipped_sheets:
                         st.warning(f"Se ignoró **{name}**. Columnas: {cols}")
 
-            # ✅ Si NO quedó ninguna hoja válida, no intentes consolidar
             if not batch_results_accumulator:
                 progress_bar.empty()
                 progress_text.empty()
-                st.error("❌ No se encontró ninguna hoja válida de timesheet (con Fecha/Horas/Descripción).")
+                st.error("❌ No se encontró ninguna hoja válida de timesheet.")
                 return
 
             progress_text.info("📊 Generando consolidado...")
@@ -1204,8 +1160,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             cliente_nombre = "NOVA - TI"
             if auto_profile_id:
                 p = next((p for p in profiles if p.client_id == auto_profile_id), None)
-                if p:
-                    cliente_nombre = p.name
+                if p: cliente_nombre = p.name
 
             consolidated = generate_consolidated_from_batch_results(
                 batch_results=batch_results_accumulator,
@@ -1229,7 +1184,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             logger.exception("Error processing multi-sheet")
             return
 
-    # ------------------ PERSISTENT DISPLAY ------------------
+    # ------------------ DISPLAY ------------------
     file_sig = f"{source_name}_{len(source_bytes)}"
     has_results = st.session_state.get("batch_results_accumulator") is not None
     is_same_file = st.session_state.get("current_file_signature") == file_sig
@@ -1237,25 +1192,10 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
     if not (has_results and is_same_file):
         return
 
-    batch_results: List[BatchFileResult] = st.session_state["batch_results_accumulator"]
+    batch_results = st.session_state["batch_results_accumulator"]
     consolidated = st.session_state["consolidated_result"]
 
-    render_divider()
-    render_section_header("Reporte Listo", icon="🏁")
-
-    c1, c2 = st.columns(2)
-    c1.metric("⏰ Horas Totales", f"{consolidated.total_horas:.1f} h")
-    c2.metric("👥 Consultores", consolidated.consultores_incluidos)
-
-    st.download_button(
-        "📥 DESCARGAR EXCEL CONSOLIDADO",
-        data=consolidated.workbook_bytes,
-        file_name=consolidated.output_filename,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary",
-        use_container_width=True,
-    )
-
+    # 1. MOSTRAR DETALLE (PRIMERO)
     render_divider()
     render_section_header("Detalle por Consultor", icon="📋")
 
@@ -1266,82 +1206,66 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             md = r.result.metadata or {}
             emp = md.get("employee", r.sheet_name)
             estado = "✅" if s.quality_score >= 90 else "🟢" if s.quality_score >= 80 else "🟡" if s.quality_score >= 60 else "🔴"
-            resumen.append(
-                {
-                    "Index": idx,
-                    "Consultor": emp,
-                    "Estado": estado,
-                    "Registros": s.total_registros,
-                    "Horas": float(f"{s.horas_totales:.1f}"),
-                    "Errores": s.total_errores,
-                    "Score": s.quality_score,
-                }
-            )
+            resumen.append({
+                "Index": idx, "Consultor": emp, "Estado": estado,
+                "Registros": s.total_registros, "Horas": float(f"{s.horas_totales:.1f}"),
+                "Errores": s.total_errores, "Score": s.quality_score,
+            })
 
     df_resumen = pd.DataFrame(resumen)
+    st.dataframe(df_resumen.drop(columns=["Index"]), use_container_width=True, hide_index=True, column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%d%%")})
 
-    st.dataframe(
-        df_resumen.drop(columns=["Index"]),
-        use_container_width=True,
-        hide_index=True,
-        column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%d%%")},
-    )
-
-    st.markdown("#### 🔍 Detalle por Consultor")
-
-    # Contenedor con scroll
-    st.markdown("""
-    <style>
-    .consultor-scroll {
-        max-height: 500px;
-        overflow-y: auto;
-        padding-right: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown("#### 🔍 Detalle Individual")
+    
+    st.markdown("""<style>.consultor-scroll {max-height: 600px; overflow-y: auto; padding-right: 10px;}</style>""", unsafe_allow_html=True)
 
     with st.container():
         st.markdown('<div class="consultor-scroll">', unsafe_allow_html=True)
-
         for _, row in df_resumen.iterrows():
             res = batch_results[int(row["Index"])]
-
-            if not (res.success and res.result):
-                continue
-
+            if not (res.success and res.result): continue
+            
             summ = res.result.summary
             nombre = row["Consultor"]
 
-            st.markdown(f"### 👤 {nombre}")
+            # =================================================================
+            # CORRECCIÓN: ELIMINADO EL EXPANDER EXTERNO ("Padre")
+            # Usamos un encabezado visual para separar consultores
+            # =================================================================
+            st.markdown("---")
+            st.markdown(f"### 👤 {nombre} | Score: {summ.quality_score}%")
 
+            # Métricas
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("📝 Registros", summ.total_registros)
             c2.metric("⏰ Horas", f"{summ.horas_totales:.1f}")
             c3.metric("🚨 Errores", summ.total_errores)
             c4.metric("📈 Score", f"{summ.quality_score:.0f}%")
 
+            # Errores (AHORA SÍ PUEDE SER UN EXPANDER porque no está anidado)
             if not res.result.errors_dataframe.empty:
-                st.warning("Observaciones encontradas:")
-                st.dataframe(
-                    res.result.errors_dataframe[
-                        ["fecha", "tipo_error", "descripcion", "valor_original"]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
-                )
+                with st.expander(f"⚠️ Errores detectados ({len(res.result.errors_dataframe)})", expanded=False):
+                    st.dataframe(res.result.errors_dataframe[["fecha", "tipo_error", "descripcion", "valor_original"]], use_container_width=True, hide_index=True)
             else:
                 st.success("🎉 Sin errores detectados.")
 
+            # Feriados (AHORA SÍ PUEDE SER UN EXPANDER porque no está anidado)
             render_holiday_block(
                 res.result.corrected_dataframe,
                 mapping.date if mapping else None,
                 metadata=res.result.metadata,
+                # use_expander=True (Por defecto usa expander, ahora funcionará)
             )
-
-            st.markdown("---")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # 2. MOSTRAR REPORTE (AL FINAL)
+    render_divider()
+    render_section_header("Reporte Listo", icon="🏁")
+    c1, c2 = st.columns(2)
+    c1.metric("⏰ Horas Totales", f"{consolidated.total_horas:.1f} h")
+    c2.metric("👥 Consultores", consolidated.consultores_incluidos)
+    st.download_button("📥 DESCARGAR EXCEL CONSOLIDADO", data=consolidated.workbook_bytes, file_name=consolidated.output_filename, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
 
 # =============================================================================
 # APP SHELL (SIDEBAR + ROUTER)
