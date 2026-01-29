@@ -571,7 +571,7 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
                 "Empleado": employee_name,
                 "Horas": summary.horas_totales,
                 "Registros": summary.total_registros,
-                "Score": summary.quality_score,
+                "Score": summary.quality_score, # Aquí viene 90, 100, etc.
                 "Errores": summary.total_errores,
             }
         )
@@ -587,16 +587,29 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
     cols[2].metric("📈 Score promedio", f"{df['Score'].mean():.0f}%")
     cols[3].metric("📝 Registros", int(df["Registros"].sum()))
 
+    # Calculamos el estado (Usamos 90, 80, 60 tal cual vienen)
     df["Estado"] = df["Score"].apply(
         lambda s: "✅ Excelente" if s >= 90 else "🟢 Bueno" if s >= 80 else "🟡 Revisar" if s >= 60 else "🔴 Crítico"
     )
+
+    # ---------------------------------------------------------
+    # CORRECCIÓN VISUAL:
+    # 1. NO dividimos para 100. Dejamos el valor original (ej: 90).
+    # 2. Configuramos max_value=100.
+    # 3. Usamos format="%d%%" para que muestre "90%" sin decimales.
+    # ---------------------------------------------------------
 
     st.dataframe(
         df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100),
+            "Score": st.column_config.ProgressColumn(
+                "Score", 
+                format="%d%%",   # <--- ESTO QUITA LOS CEROS (Muestra 90% en vez de 90.00%)
+                min_value=0, 
+                max_value=100    # <--- ESCALA DE 0 a 100
+            ),
             "Horas": st.column_config.NumberColumn("Horas", format="%.1f"),
         },
     )
@@ -611,6 +624,7 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    # ... (El resto de la función para generar el Excel sigue igual) ...
     render_divider()
     render_section_header("Generar consolidado Excel", icon="📄")
 
@@ -672,7 +686,6 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
             except Exception as exc:
                 st.error(f"Error: {exc}")
                 logger.exception("Error generando consolidado: %s", exc)
-
 
 def run_batch_mode(
     batch_state: Dict[str, object],
