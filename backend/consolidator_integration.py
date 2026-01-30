@@ -1,14 +1,15 @@
 """
 Módulo de integración entre BatchProcessor y TimeSheetConsolidator.
-
-Proporciona funciones de alto nivel para generar reportes consolidados
-a partir de los resultados del procesamiento por lotes.
+CORREGIDO: 
+1. Estructura de datos: Vuelve a usar TUPLAS (df, metadata) para compatibilidad.
+2. Mantiene la normalización de columnas (FECHA -> Fecha).
+3. LIMPIEZA: Elimina columnas basura (_1, _2, Unnamed) generadas por formatos sucios.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 import pandas as pd
 
@@ -25,36 +26,6 @@ def generate_consolidated_from_batch_results(
 ) -> ConsolidatedReport:
     """
     Genera un reporte consolidado a partir de los resultados del BatchProcessor.
-
-    Esta función toma los archivos ya procesados y validados por el BatchProcessor
-    y genera un único archivo Excel consolidado con:
-    - Hoja de resumen con todos los consultores
-    - Hojas individuales por consultor
-    - Cálculos de facturación
-
-    Args:
-        batch_results: Resultados del BatchProcessor.process_batch()
-        cliente: Nombre del cliente para el encabezado
-        output_filename: Nombre del archivo de salida (None para auto-generar)
-
-    Returns:
-        ConsolidatedReport con el workbook generado y metadatos
-
-    Raises:
-        ValueError: Si no hay resultados exitosos para consolidar
-
-    Example:
-        >>> from backend.batch_processor import BatchProcessor
-        >>> from backend.consolidator_integration import generate_consolidated_from_batch_results
-        >>>
-        >>> # Procesar archivos
-        >>> batch_processor = BatchProcessor(processor)
-        >>> batch_results = batch_processor.process_batch(files)
-        >>>
-        >>> # Generar consolidado
-        >>> consolidated = generate_consolidated_from_batch_results(batch_results)
-        >>> with open(consolidated.output_filename, 'wb') as f:
-        ...     f.write(consolidated.workbook_bytes)
     """
     logger.info("Iniciando generación de consolidado desde %d resultados de batch", len(batch_results))
 
@@ -69,48 +40,101 @@ def generate_consolidated_from_batch_results(
 
     logger.info("Resultados exitosos: %d/%d", len(successful_results), len(batch_results))
 
-    # Extraer datos de cada consultor
+    # ⚠️ CAMBIO CRÍTICO: Lista de TUPLAS (DataFrame, dict), no diccionarios.
     consultores_data: List[Tuple[pd.DataFrame, dict]] = []
 
     for batch_result in successful_results:
         try:
-            corrected_df = batch_result.result.corrected_dataframe.copy()
+            res = batch_result.result
+            df = res.corrected_dataframe.copy()
 
             # =========================================================
-            # 1️⃣ Normalizar columnas SIN perder información
-            #     - elimina solo duplicados (_1, _2...)
-            #     - conserva TODAS las columnas reales
+            # 🛡️ RED DE SEGURIDAD: NORMALIZACIÓN DE COLUMNAS
             # =========================================================
-            clean_cols = []
-            seen = set()
+            rename_map = {}
+            
+            # 1. Usar detección del sistema
+            date_col_name = getattr(res, "date_column", None)
+            hours_col_name = getattr(res, "hours_column", None)
+            desc_col_name = getattr(res, "description_column", None)
 
-            for col in corrected_df.columns:
-                base = str(col).strip()
+            if date_col_name and date_col_name in df.columns:
+                rename_map[date_col_name] = "Fecha"
+            if hours_col_name and hours_col_name in df.columns:
+                rename_map[hours_col_name] = "Horas"
+            if desc_col_name and desc_col_name in df.columns:
+                rename_map[desc_col_name] = "Actividad"
+            
+            df = df.rename(columns=rename_map)
 
-                # eliminar sufijos técnicos: _1, _2, .1, .2
-                base_key = base.split("_")[0].split(".")[0]
+            # 2. Plan B: Búsqueda flexible
+            if "Fecha" not in df.columns:
+                for col in df.columns:
+                    c_lower = str(col).lower().strip()
+                    if c_lower in ["fecha", "date", "fec"]:
+                        df.rename(columns={col: "Fecha"}, inplace=True)
+                        break
+            
+            if "Horas" not in df.columns:
+                for col in df.columns:
+                    c_lower = str(col).lower().strip()
+                    if c_lower in ["horas", "hours", "hrs", "tiempo", "time"]:
+                        df.rename(columns={col: "Horas"}, inplace=True)
+                        break
 
-                if base_key not in seen:
-                    clean_cols.append(col)
-                    seen.add(base_key)
-
-            corrected_df = corrected_df[clean_cols]
+            if "Actividad" not in df.columns:
+                for col in df.columns:
+                    c_lower = str(col).lower().strip()
+                    if any(x in c_lower for x in ["actividad", "descrip", "task", "tarea"]):
+                        df.rename(columns={col: "Actividad"}, inplace=True)
+                        break
 
             # =========================================================
-            # 2️⃣ Combinar metadata
+            # 🧹 LIMPIEZA DE COLUMNAS BASURA (_1, _2, etc.)
             # =========================================================
+            # Eliminamos columnas que pandas genera cuando hay celdas vacias con formato
+            cols_to_keep = []
+            for col in df.columns:
+                c_str = str(col).strip()
+                # Si empieza con "_" seguido de un numero (ej: _1, _14) es basura
+                if c_str.startswith("_") and c_str[1:].isdigit():
+                    continue
+                # Si es "Unnamed", es basura
+                if "unnamed" in c_str.lower():
+                    continue
+                cols_to_keep.append(col)
+            
+            df = df[cols_to_keep]
+
+            # =========================================================
+            # 3️⃣ Preparar Metadata
+            # =========================================================
+            meta = batch_result.metadata or {}
+            res_meta = batch_result.result.metadata or {}
+            
+            employee_name = (
+                meta.get("employee") 
+                or res_meta.get("employee") 
+                or batch_result.sheet_name 
+                or "Desconocido"
+            )
+
             combined_metadata = {
-                **(batch_result.metadata or {}),
-                **(batch_result.result.metadata or {}),
+                **meta,
+                **res_meta,
+                "employee": employee_name, # Asegurar que el nombre esté aquí
                 "file_name": batch_result.file_name,
                 "client_id": batch_result.client_id,
             }
 
-            consultores_data.append((corrected_df, combined_metadata))
+            # =========================================================
+            # 4️⃣ Agregar como TUPLA (df, metadata)
+            # =========================================================
+            consultores_data.append((df, combined_metadata))
 
             logger.debug(
                 "Agregado consultor: %s (%s)",
-                combined_metadata.get("employee", "Desconocido"),
+                employee_name,
                 batch_result.file_name,
             )
 
@@ -122,15 +146,15 @@ def generate_consolidated_from_batch_results(
             )
             continue
 
-
-
     if not consultores_data:
-        raise ValueError("No se pudieron extraer datos válidos de los resultados")
+        raise ValueError("No se pudieron extraer datos válidos. Verifique columnas Fecha/Horas.")
 
-    # Crear consolidador y generar reporte
+    # Crear consolidador
     consolidator = TimeSheetConsolidator(cliente=cliente)
+    
+    # Generar reporte pasando la lista de TUPLAS
     consolidated_report = consolidator.generate_consolidated_report(
-        consultores_data=consultores_data,
+        consultores_data=consultores_data, 
         output_filename=output_filename,
     )
 
@@ -146,30 +170,14 @@ def validate_batch_results_for_consolidation(
 ) -> Tuple[bool, List[str]]:
     """
     Valida que los resultados del batch sean aptos para consolidación.
-
-    Args:
-        batch_results: Resultados del BatchProcessor
-
-    Returns:
-        Tupla (es_valido, lista_de_warnings)
-
-    Example:
-        >>> is_valid, warnings = validate_batch_results_for_consolidation(batch_results)
-        >>> if warnings:
-        ...     for warning in warnings:
-        ...         print(f"⚠️ {warning}")
-        >>> if is_valid:
-        ...     consolidated = generate_consolidated_from_batch_results(batch_results)
     """
     warnings = []
 
-    # Verificar que haya al menos un resultado exitoso
     successful_count = sum(1 for r in batch_results if r.success)
     if successful_count == 0:
         warnings.append("No hay archivos procesados exitosamente. No se puede generar consolidado.")
         return False, warnings
 
-    # Verificar consistencia de periodos
     periodos = set()
     for result in batch_results:
         if result.success and result.metadata:
@@ -186,7 +194,6 @@ def validate_batch_results_for_consolidation(
             "Se recomienda consolidar archivos del mismo mes."
         )
 
-    # Verificar nombres de consultores únicos
     nombres = []
     for result in batch_results:
         if result.success and result.metadata:
@@ -201,7 +208,6 @@ def validate_batch_results_for_consolidation(
             "Verifique que no haya archivos repetidos."
         )
 
-    # Verificar archivos con errores
     failed_count = len(batch_results) - successful_count
     if failed_count > 0:
         warnings.append(

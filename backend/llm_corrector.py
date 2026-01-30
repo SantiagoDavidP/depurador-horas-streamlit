@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CorrectionResult:
     """Resultado de una corrección ortográfica y semántica básica."""
-
     fila: int
     original_text: str
     corrected_text: str
@@ -28,7 +27,7 @@ class CorrectionResult:
 
 
 class LLMCorrector:
-    """Integración con Azure OpenAI para corrección ortográfica contextual con caché opcional."""
+    """Integración con Azure OpenAI para corrección ortográfica contextual."""
 
     def __init__(
         self,
@@ -37,7 +36,7 @@ class LLMCorrector:
         deployment_name: Optional[str] = None,
         batch_size: int = 20,
         max_concurrent_requests: int = 3,
-        temperature: float = 0.1,
+        temperature: float = 1.0, # Modelos o1/4o a veces requieren temp=1
         enable_cache: bool = True,
     ) -> None:
         settings = get_settings()
@@ -53,9 +52,12 @@ class LLMCorrector:
         self.deployment_name = deployment_name or settings.azure_openai.deployment
         self.batch_size = max(1, batch_size)
         self.temperature = temperature
-        self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         
-        # Inicializar caché si está habilitado
+        # 🟢 FIX CONCURRENCIA: Inicializamos en None, se crea bajo demanda
+        self._semaphore = None
+        self._concurrency_limit = max_concurrent_requests
+        
+        # Inicializar caché
         self.enable_cache = enable_cache
         self._cache = None
         if enable_cache:
@@ -67,42 +69,44 @@ class LLMCorrector:
                 logger.warning("No se pudo importar llm_cache, caché deshabilitado")
                 self.enable_cache = False
         
+        # 🟢 FIX PROMPT: Instrucciones claras y ejemplos (Few-Shot)
         self._system_prompt = (
-            "Eres un corrector ortográfico especializado en timesheets de proyectos tecnológicos.\n\n"
-            "REGLAS ESTRICTAS:\n\n"
-            "PRESERVA términos técnicos en inglés:\n\n"
-            "Metodologías: daily, standup, sprint, scrum, retrospective\n\n"
-            "Git: merge, commit, pull request, push, branch, rebase\n\n"
-            "DevOps: deployment, pipeline, docker, kubernetes, jenkins\n\n"
-            "Testing: testing, smoke test, regression, unit test\n\n"
-            "General: debugging, refactoring, code review, bug fixing\n\n"
-            "PRESERVA nombres de tecnologías:\n\n"
-            "Azure, AWS, GCP, Docker, Kubernetes, Jenkins, Git, GitHub\n\n"
-            "Python, Java, JavaScript, TypeScript, React, Angular\n\n"
-            "Terraform, Ansible, Prometheus, Grafana\n\n"
-            "PRESERVA siglas y acrónimos:\n\n"
-            "CI/CD, API, REST, QA, DevOps, UI/UX, ETL, SQL\n\n"
-            "CORRIGE SOLO:\n\n"
-            "Errores ortográficos evidentes en español\n"
-            "Errores de acentuación\n"
-            "Errores gramaticales básicos\n\n"
-            "NO CAMBIES el significado técnico ni la estructura."
+            "Eres un experto corrector de estilo y ortografía para reportes técnicos (timesheets).\n"
+            "Tu objetivo es limpiar el texto para que sea profesional, manteniendo intacta la terminología técnica.\n\n"
+            
+            "REGLAS DE ORO:\n"
+            "1. CORRIGE SIEMPRE: Acentos (tildes), errores de 'b/v', 'c/s/z', 'h', y mayúsculas iniciales.\n"
+            "2. PRESERVA EXACTAMENTE: Términos en inglés (daily, deploy, commit, sprint), nombres de herramientas (Azure, Docker) y acrónimos (QA, API).\n"
+            "3. NO RESUMAS: El texto corregido debe tener la misma longitud y detalle que el original.\n\n"
+            
+            "EJEMPLOS DE COMPORTAMIENTO ESPERADO:\n"
+            "Entrada: 'reunion con el equipo de qa para ver el bug'\n"
+            "Salida Correcta: 'Reunión con el equipo de QA para ver el bug'\n\n"
+            
+            "Entrada: 'despliegue en produccion del microservicio de pagos'\n"
+            "Salida Correcta: 'Despliegue en producción del microservicio de pagos'\n\n"
+            
+            "Entrada: 'analisis de logs en azure monitor'\n"
+            "Salida Correcta: 'Análisis de logs en Azure Monitor'\n\n"
+            
+            "ANALIZA Y CORRIGE EL SIGUIENTE TEXTO SIGUIENDO ESTOS PATRONES."
         )
+        
         self._user_prompt_template = (
-            "CONTEXTO:\n\n"
-            "Rol: {role}\n\n"
+            "CONTEXTO:\n"
+            "Rol: {role}\n"
             "Proyecto: {project}\n\n"
-            "ACTIVIDAD A REVISAR:\n"
-            "{text}\n\n"
-            "RESPONDE EN JSON:\n"
-            '{{\n'
-            '  "texto_corregido": "...",\n'
-            '  "cambios_realizados": ["cambio1", "cambio2"],\n'
-            '  "es_coherente_con_rol": true,\n'
-            '  "nivel_especificidad": 1,\n'
-            '  "sugerencia_mejora": "...",\n'
-            '  "terminologia_tecnica_detectada": ["termino1", "termino2"]\n'
-            '}}\n'
+            "TEXTO ORIGINAL:\n"
+            "\"{text}\"\n\n"
+            "Genera una respuesta JSON estrictamente con este formato:\n"
+            "{{\n"
+            "  \"texto_corregido\": \"(Texto corregido)\",\n"
+            "  \"cambios_realizados\": [\"lista de correcciones\"],\n"
+            "  \"es_coherente_con_rol\": true,\n"
+            "  \"nivel_especificidad\": 1,\n"
+            "  \"sugerencia_mejora\": \"(Opcional)\",\n"
+            "  \"terminologia_tecnica_detectada\": [\"termino1\", \"termino2\"]\n"
+            "}}"
         )
 
     @staticmethod
@@ -110,26 +114,24 @@ class LLMCorrector:
         return text.strip().lower()
 
     @staticmethod
-    def _sanitize_input(text: str, max_length: int = 200) -> str:
-        """Sanitiza entrada para prevenir inyección de prompts."""
+    def _sanitize_input(text: str, max_length: int = 500) -> str:
         if not text:
             return "No especificado"
-        # Eliminar saltos de línea múltiples y caracteres de control
         sanitized = " ".join(str(text).split())
-        # Limitar longitud para prevenir inputs excesivos
         return sanitized[:max_length]
 
     async def _correct_text(self, text: str, role: str, project: str) -> Dict[str, object]:
-        # Sanitizar inputs para prevenir inyección de prompts
+        # 🟢 FIX CONCURRENCIA: Crear semáforo aquí dentro del loop
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._concurrency_limit)
+
         safe_role = self._sanitize_input(role, max_length=50)
         safe_project = self._sanitize_input(project, max_length=100)
         safe_text = self._sanitize_input(text, max_length=500)
         
-        # Intentar obtener del caché primero
         if self.enable_cache and self._cache:
             cached_result = self._cache.get(text, role, project)
             if cached_result is not None:
-                logger.debug("Usando resultado cacheado para texto: %s...", text[:30])
                 return cached_result
         
         user_prompt = self._user_prompt_template.format(
@@ -137,44 +139,66 @@ class LLMCorrector:
             project=safe_project, 
             text=safe_text
         )
+        
         try:
             async with self._semaphore:
+                # 🟢 FIX PARAMETRO: Usamos max_completion_tokens en lugar de max_tokens
+                # Si tu modelo es o1-preview/mini, temperature suele forzarse a 1
                 response = await self.client.chat.completions.create(
                     model=self.deployment_name,
-                    temperature=self.temperature,
                     messages=[
                         {"role": "system", "content": self._system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
+                    max_completion_tokens=250, # Nuevo nombre del parámetro
+                    temperature=1.0 # Default seguro
                 )
+            
             content = response.choices[0].message.content or ""
             result = self._parse_llm_response(content, original_text=text)
             
-            # Guardar en caché
             if self.enable_cache and self._cache:
                 self._cache.set(text, role, project, result)
             
             return result
+
         except OpenAIError as exc:
-            logger.error("Azure OpenAI request failed: %s", exc, exc_info=True)
-            return {
-                "texto_corregido": text,
-                "cambios_realizados": [],
-                "es_coherente_con_rol": None,
-                "nivel_especificidad": None,
-                "sugerencia_mejora": None,
-                "terminologia_tecnica_detectada": [],
-            }
-        except Exception as exc:  # pragma: no cover
+            # 🟢 Manejo específico si el modelo no soporta max_completion_tokens
+            if "Unsupported parameter" in str(exc) and "max_completion_tokens" in str(exc):
+                logger.warning("Modelo no soporta max_completion_tokens, reintentando con max_tokens...")
+                try:
+                    # Reintento para modelos antiguos (legacy fallback)
+                    async with self._semaphore:
+                        response = await self.client.chat.completions.create(
+                            model=self.deployment_name,
+                            messages=[
+                                {"role": "system", "content": self._system_prompt},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                            max_tokens=250, # Fallback antiguo
+                            temperature=0.3
+                        )
+                    content = response.choices[0].message.content or ""
+                    return self._parse_llm_response(content, original_text=text)
+                except Exception as e2:
+                    logger.error("Fallo reintento IA: %s", e2)
+            
+            logger.error("Azure OpenAI request failed: %s", exc)
+            return self._default_result(text)
+            
+        except Exception as exc:
             logger.exception("Unexpected error while calling Azure OpenAI: %s", exc)
-            return {
-                "texto_corregido": text,
-                "cambios_realizados": [],
-                "es_coherente_con_rol": None,
-                "nivel_especificidad": None,
-                "sugerencia_mejora": None,
-                "terminologia_tecnica_detectada": [],
-            }
+            return self._default_result(text)
+
+    def _default_result(self, text: str) -> Dict[str, object]:
+        return {
+            "texto_corregido": text,
+            "cambios_realizados": [],
+            "es_coherente_con_rol": None,
+            "nivel_especificidad": None,
+            "sugerencia_mejora": None,
+            "terminologia_tecnica_detectada": [],
+        }
 
     def _run_async(self, coro: asyncio.Future) -> Dict[str, Dict[str, object]]:
         try:
@@ -182,13 +206,13 @@ class LLMCorrector:
         except RuntimeError as exc:
             if "already running" not in str(exc):
                 raise
-            new_loop = asyncio.new_event_loop()
+            # Fix para Streamlit que ya tiene loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                asyncio.set_event_loop(new_loop)
-                return new_loop.run_until_complete(coro)
+                return loop.run_until_complete(coro)
             finally:
-                asyncio.set_event_loop(None)
-                new_loop.close()
+                loop.close()
 
     async def _correct_unique_payload(
         self,
@@ -205,7 +229,7 @@ class LLMCorrector:
                 for item in chunk_payload
             ]
             chunk_results = await asyncio.gather(*tasks)
-            for text_item, corrected_item in zip(chunk_payload, chunk_results, strict=False):
+            for text_item, corrected_item in zip(chunk_payload, chunk_results):
                 results[text_item] = corrected_item
 
         for text in canonical_texts:
@@ -225,7 +249,6 @@ class LLMCorrector:
         role: str = "Desconocido",
         project: str = "No especificado",
     ) -> List[CorrectionResult]:
-        """Corrige descripciones y devuelve metadatos enriquecidos."""
         if not rows:
             return []
 
@@ -251,45 +274,59 @@ class LLMCorrector:
         for normalized, items in reverse_map.items():
             original_text = canonical_map[normalized]
             payload = corrected_map.get(original_text, {})
+            
             corrected = payload.get("texto_corregido", original_text)
             changes = payload.get("cambios_realizados") or []
             role_coherent = payload.get("es_coherente_con_rol")
             specificity = payload.get("nivel_especificidad")
             suggestion = payload.get("sugerencia_mejora")
             terminology = payload.get("terminologia_tecnica_detectada") or []
-            for fila, source_text in items:
-                if corrected != source_text or changes or suggestion:
+            
+            # Solo agregar si hubo cambios reales
+            if corrected != original_text or changes or suggestion:
+                for fila, source_text in items:
                     corrections.append(
                         CorrectionResult(
                             fila=fila,
                             original_text=source_text,
                             corrected_text=corrected,
                             changes=list(changes),
-                            role_coherent=role_coherent if isinstance(role_coherent, bool) else None,
+                            role_coherent=bool(role_coherent) if role_coherent is not None else None,
                             specificity_level=int(specificity) if isinstance(specificity, int) else None,
                             suggestion=suggestion if suggestion else None,
                             terminology_detected=list(terminology),
                         )
                     )
+        
         logger.info("LLM generó %d correcciones de %d filas candidatas.", len(corrections), len(rows))
         return corrections
 
     @staticmethod
     def _parse_llm_response(content: str, *, original_text: str) -> Dict[str, object]:
-        """Extrae JSON del LLM, tolerando envoltorios en markdown."""
         if not content:
             return {"texto_corregido": original_text}
+        
         cleaned = content.strip()
+        # Remove markdown code blocks if present
         if cleaned.startswith("```"):
             cleaned = cleaned.strip("`")
             if cleaned.startswith("json"):
                 cleaned = cleaned[4:].strip()
+        
         try:
-            json_start = cleaned.index("{")
-            json_end = cleaned.rindex("}") + 1
-            payload = json.loads(cleaned[json_start:json_end])
-            payload.setdefault("texto_corregido", original_text)
-            return payload
+            # Find the JSON object
+            json_start = cleaned.find("{")
+            json_end = cleaned.rfind("}") + 1
+            
+            if json_start != -1 and json_end != -1:
+                json_str = cleaned[json_start:json_end]
+                payload = json.loads(json_str)
+                payload.setdefault("texto_corregido", original_text)
+                return payload
+            else:
+                # Fallback if no JSON structure found
+                return {"texto_corregido": cleaned or original_text}
+                
         except Exception:
             logger.warning("Respuesta LLM no es JSON válido, se usa texto plano.")
             return {"texto_corregido": cleaned or original_text}

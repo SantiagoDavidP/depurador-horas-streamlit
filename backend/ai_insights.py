@@ -77,7 +77,10 @@ Reglas:
                 model=settings.azure_openai.deployment,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                temperature=0.2,
+                # 🔴 CAMBIO CRÍTICO: Modelos o1/o3 requieren temperature=1.0
+                temperature=1.0, 
+                # Opcional: Agregar límite de tokens para evitar respuestas eternas
+                # max_completion_tokens=500 
             )
             content = response.choices[0].message.content or "{}"
             return json.loads(content)

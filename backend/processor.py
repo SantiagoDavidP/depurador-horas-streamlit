@@ -223,7 +223,7 @@ class TimeSheetProcessor:
                 .nunique()
             )
 
-                    # ============================
+        # ============================
         # NUEVA LÓGICA DE SCORING (INDIVIDUAL)
         # ============================
         critical_count = sum(
@@ -238,6 +238,11 @@ class TimeSheetProcessor:
         counter = Counter(warning_types)
 
         penalty = 0
+
+
+        if any(e["tipo_error"] == "completitud" for e in errors):
+            penalty += 20
+            logger.info("📉 Penalización por días faltantes aplicada (-20 puntos)")
 
         # 🔴 Errores críticos: SIEMPRE estrictos
         penalty += critical_count * 10

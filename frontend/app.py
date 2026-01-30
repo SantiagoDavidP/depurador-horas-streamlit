@@ -1195,7 +1195,54 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
     batch_results = st.session_state["batch_results_accumulator"]
     consolidated = st.session_state["consolidated_result"]
 
-    # 1. MOSTRAR DETALLE (PRIMERO)
+    # =========================================================
+    # 1. MOSTRAR LISTA DETALLADA (SCROLL) - PRIMERO
+    # =========================================================
+    render_divider()
+    st.markdown("#### 🔍 Detalle Individual")
+    
+    st.markdown("""<style>.consultor-scroll {max-height: 600px; overflow-y: auto; padding-right: 10px;}</style>""", unsafe_allow_html=True)
+
+    with st.container():
+        st.markdown('<div class="consultor-scroll">', unsafe_allow_html=True)
+        for idx, res in enumerate(batch_results):
+            if not (res.success and res.result): continue
+            
+            summ = res.result.summary
+            md = res.result.metadata or {}
+            # Nombre prioritario: Metadata > Nombre Hoja
+            nombre = md.get("employee") or res.sheet_name or f"Consultor {idx+1}"
+
+            # ENCABEZADO Y MÉTRICAS
+            st.markdown("---")
+            st.markdown(f"### 👤 {nombre} | Score: {summ.quality_score}%")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("📝 Registros", summ.total_registros)
+            c2.metric("⏰ Horas", f"{summ.horas_totales:.1f}")
+            c3.metric("🚨 Errores", summ.total_errores)
+            c4.metric("📈 Score", f"{summ.quality_score:.0f}%")
+
+            # ERRORES (Expander)
+            if not res.result.errors_dataframe.empty:
+                with st.expander(f"⚠️ Errores detectados ({len(res.result.errors_dataframe)})", expanded=False):
+                    st.dataframe(res.result.errors_dataframe[["fecha", "tipo_error", "descripcion", "valor_original"]], use_container_width=True, hide_index=True)
+            else:
+                st.success("🎉 Sin errores detectados.")
+
+            # FERIADOS (Expander)
+            render_holiday_block(
+                res.result.corrected_dataframe,
+                mapping.date if mapping else None,
+                metadata=res.result.metadata,
+                # use_expander=True (Por defecto)
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # =========================================================
+    # 2. MOSTRAR TABLA RESUMEN (DETALLE POR CONSULTOR) - SEGUNDO
+    # =========================================================
     render_divider()
     render_section_header("Detalle por Consultor", icon="📋")
 
@@ -1213,60 +1260,22 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             })
 
     df_resumen = pd.DataFrame(resumen)
-    st.dataframe(df_resumen.drop(columns=["Index"]), use_container_width=True, hide_index=True, column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%d%%")})
+    st.dataframe(
+        df_resumen.drop(columns=["Index"]), 
+        use_container_width=True, 
+        hide_index=True, 
+        column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%d%%")}
+    )
 
-    st.markdown("#### 🔍 Detalle Individual")
-    
-    st.markdown("""<style>.consultor-scroll {max-height: 600px; overflow-y: auto; padding-right: 10px;}</style>""", unsafe_allow_html=True)
-
-    with st.container():
-        st.markdown('<div class="consultor-scroll">', unsafe_allow_html=True)
-        for _, row in df_resumen.iterrows():
-            res = batch_results[int(row["Index"])]
-            if not (res.success and res.result): continue
-            
-            summ = res.result.summary
-            nombre = row["Consultor"]
-
-            # =================================================================
-            # CORRECCIÓN: ELIMINADO EL EXPANDER EXTERNO ("Padre")
-            # Usamos un encabezado visual para separar consultores
-            # =================================================================
-            st.markdown("---")
-            st.markdown(f"### 👤 {nombre} | Score: {summ.quality_score}%")
-
-            # Métricas
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("📝 Registros", summ.total_registros)
-            c2.metric("⏰ Horas", f"{summ.horas_totales:.1f}")
-            c3.metric("🚨 Errores", summ.total_errores)
-            c4.metric("📈 Score", f"{summ.quality_score:.0f}%")
-
-            # Errores (AHORA SÍ PUEDE SER UN EXPANDER porque no está anidado)
-            if not res.result.errors_dataframe.empty:
-                with st.expander(f"⚠️ Errores detectados ({len(res.result.errors_dataframe)})", expanded=False):
-                    st.dataframe(res.result.errors_dataframe[["fecha", "tipo_error", "descripcion", "valor_original"]], use_container_width=True, hide_index=True)
-            else:
-                st.success("🎉 Sin errores detectados.")
-
-            # Feriados (AHORA SÍ PUEDE SER UN EXPANDER porque no está anidado)
-            render_holiday_block(
-                res.result.corrected_dataframe,
-                mapping.date if mapping else None,
-                metadata=res.result.metadata,
-                # use_expander=True (Por defecto usa expander, ahora funcionará)
-            )
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # 2. MOSTRAR REPORTE (AL FINAL)
+    # =========================================================
+    # 3. MOSTRAR REPORTE LISTO (AL FINAL)
+    # =========================================================
     render_divider()
     render_section_header("Reporte Listo", icon="🏁")
     c1, c2 = st.columns(2)
     c1.metric("⏰ Horas Totales", f"{consolidated.total_horas:.1f} h")
     c2.metric("👥 Consultores", consolidated.consultores_incluidos)
     st.download_button("📥 DESCARGAR EXCEL CONSOLIDADO", data=consolidated.workbook_bytes, file_name=consolidated.output_filename, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
-
 # =============================================================================
 # APP SHELL (SIDEBAR + ROUTER)
 # =============================================================================
