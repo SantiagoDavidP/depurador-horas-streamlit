@@ -1,0 +1,63 @@
+{
+  "cliente_bit": {
+    "nombre": "BIT Nova",
+    "mapeo_columnas": {
+      "date": "Fecha",
+      "hours": "Horas",
+      "description": "Actividad",
+      "project": "Tipo Actividad"
+    },
+    "rol_default": "Developer",
+    "horas_esperadas_dia": 8.0,
+    "keywords": [
+      "bit",
+      "nova"
+    ],
+    "company_aliases": [
+      "bit",
+      "bit nova",
+      "bitnova"
+    ],
+    "tipos_hora_validos": [
+      "HN",
+      "HE",
+      "HN50",
+      "HE100"
+    ]
+  },
+  "cliente_talent": {
+    "nombre": "BANINTER",
+    "mapeo_columnas": {
+      "date": "Fecha",
+      "hours": "Horas",
+      "description": "Tareas",
+      "project": "Proyecto"
+    },
+    "rol_default": "Developer",
+    "horas_esperadas_dia": 8.0,
+    "keywords": [
+      "banco internacional",
+      "baninter"
+    ],
+    "company_aliases": [
+      "banco internacional",
+      "baninter"
+    ],
+    "tipos_hora_validos": [
+      "HN",
+      "HE",
+      "HN50",
+      "HE100"
+    ]
+  },
+  "cliente_generico": {
+    "nombre": "Generico Manual",
+    "mapeo_columnas": {
+      "date": "Fecha",
+      "hours": "Horas",
+      "description": "Detalle"
+    },
+    "keywords": [],
+    "company_aliases": []
+  }
+}
