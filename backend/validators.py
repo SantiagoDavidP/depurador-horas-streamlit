@@ -162,6 +162,8 @@ def validate_mapping(
     description_col: str,
     minimum_valid_ratio: float = 0.8,
 ) -> None:
+    import time
+    t_start = time.perf_counter()
     _ensure_required_columns(df, [date_col, hours_col, description_col])
 
     parsed_dates = pd.to_datetime(
@@ -177,6 +179,12 @@ def validate_mapping(
             f"Solo el {coverage:.0%} de las filas contiene datos válidos según el mapeo. "
             "Ajuste la selección de columnas."
         )
+    logger.info(
+        "TIMING: validate_mapping %.2fs rows=%d cols=%d",
+        time.perf_counter() - t_start,
+        len(df),
+        len(df.columns),
+    )
 
 
 def validate_calendar_constraints(
@@ -531,9 +539,13 @@ def validate_duplicate_entries(
     row_numbers: Optional[Sequence[int]] = None,
     parsed_dates: Optional[pd.Series] = None,
     normalized_descriptions: Optional[pd.Series] = None,
+    enable_fuzzy: bool = True,
+    fuzzy_max_text_len: int = 600,
+    fuzzy_time_budget_sec: Optional[float] = 1.5,
 ) -> List[ValidationIssue]:
     """Detecta registros duplicados o muy similares usando fuzzy matching."""
     issues: List[ValidationIssue] = []
+    import time
 
     _ensure_required_columns(df, [date_column, description_column, hours_column])
 
@@ -575,8 +587,13 @@ def validate_duplicate_entries(
                     descripcion=f"Descripción idéntica repetida {len(filas)} veces. Posible copy-paste.",
                     valor_original=str(group[description_column].iloc[0]),
                     valor_corregido="",
-                )
-            )
+                      )
+              )
+
+    if not enable_fuzzy:
+        logger.info("validate_duplicate_entries: fuzzy matching desactivado (modo fast).")
+        logger.info("validate_duplicate_entries: %d duplicados detectados", len(issues))
+        return issues
 
     descriptions = work_df["_normalized_desc"].unique()
 
@@ -586,6 +603,16 @@ def validate_duplicate_entries(
         logger.info("Limitando fuzzy matching a primeras 30 descripciones para evitar timeout")
         descriptions = descriptions[:30]
 
+    # Truncar textos largos solo para el fuzzy matching (no afecta valores reportados)
+    fuzzy_lookup = {}
+    for desc in descriptions:
+        if not isinstance(desc, str):
+            desc = str(desc or "")
+        fuzzy_lookup[desc] = desc[:fuzzy_max_text_len]
+
+    fuzzy_start = time.perf_counter()
+    fuzzy_exceeded = False
+
     for i, desc1 in enumerate(descriptions):
         if not desc1 or len(desc1) < 10:
             continue
@@ -593,7 +620,10 @@ def validate_duplicate_entries(
         for desc2 in descriptions[i + 1 : i + 11]:
             if not desc2:
                 continue
-            similarity = fuzz.ratio(desc1, desc2)
+            if fuzzy_time_budget_sec is not None and (time.perf_counter() - fuzzy_start) > fuzzy_time_budget_sec:
+                fuzzy_exceeded = True
+                break
+            similarity = fuzz.ratio(fuzzy_lookup.get(desc1, desc1), fuzzy_lookup.get(desc2, desc2))
             if similarity >= similarity_threshold:
                 rows1 = list(index_map.get(desc1, []))
                 rows2 = list(index_map.get(desc2, []))
@@ -620,9 +650,17 @@ def validate_duplicate_entries(
                                 f"{len(rows1) + len(rows2)} veces. Revise posibles duplicados."
                             ),
                             valor_original=str(work_df.loc[idx_ref, description_column]),
-                            valor_corregido="",
-                        )
-                    )
+                              valor_corregido="",
+                          )
+                      )
+        if fuzzy_exceeded:
+            break
+
+    if fuzzy_exceeded:
+        logger.warning(
+            "Fuzzy matching detenido por limite de tiempo (%.1fs). Se omitieron comparaciones adicionales.",
+            fuzzy_time_budget_sec,
+        )
 
     logger.info("validate_duplicate_entries: %d duplicados detectados", len(issues))
     return issues
@@ -1064,6 +1102,9 @@ def run_all_validations(
     period_month: Optional[int] = None,
     precomputed: Optional[Dict[str, pd.Series]] = None,
     missing_fields_ignore_columns: Optional[Sequence[str]] = None,
+    duplicate_fuzzy_enabled: bool = True,
+    duplicate_fuzzy_max_text_len: int = 600,
+    duplicate_fuzzy_time_budget_sec: Optional[float] = 1.5,
 ) -> List[ValidationIssue]:
     """
     Ejecuta todas las validaciones disponibles y agrega sus resultados.
@@ -1073,11 +1114,22 @@ def run_all_validations(
         period_year: Año del periodo para validación de completitud (None = auto-detectar)
         period_month: Mes del periodo para validación de completitud (None = auto-detectar)
     """
+    import time
+
     issues: List[ValidationIssue] = []
     precomputed = precomputed or {}
     parsed_dates = precomputed.get("parsed_dates")
     numeric_hours = precomputed.get("numeric_hours")
     normalized_descriptions = precomputed.get("normalized_description")
+
+    def _log_timing(name: str, start: float) -> None:
+        logger.info(
+            "TIMING: %s %.2fs rows=%d cols=%d",
+            name,
+            time.perf_counter() - start,
+            len(df),
+            len(df.columns),
+        )
 
     if numeric_hours is None or numeric_hours.isna().any():
         numeric_hours = _coerce_hours_series(df[hours_column])
@@ -1088,6 +1140,7 @@ def run_all_validations(
         )
 
     try:
+        t0 = time.perf_counter()
         issues.extend(
             validate_calendar_constraints(
                 df,
@@ -1096,11 +1149,13 @@ def run_all_validations(
                 parsed_dates=parsed_dates,
             )
         )
+        _log_timing("validate_calendar_constraints", t0)
     except Exception as exc:
         logger.exception("Error validando calendario: %s", exc)
         raise
 
     try:
+        t0 = time.perf_counter()
         issues.extend(
             validate_daily_hours(
                 df,
@@ -1112,12 +1167,14 @@ def run_all_validations(
                 numeric_hours=numeric_hours,
             )
         )
+        _log_timing("validate_daily_hours", t0)
     except Exception as exc:
         logger.exception("Error validando horas diarias: %s", exc)
         raise
 
     if description_column:
         try:
+            t0 = time.perf_counter()
             issues.extend(
                 validate_description_quality(
                     df,
@@ -1126,30 +1183,48 @@ def run_all_validations(
                     row_numbers=row_numbers,
                 )
             )
-            issues.extend(
-                detect_copy_paste_patterns(
-                    df,
-                    description_column=description_column,
-                    date_column=date_column,
-                    max_consecutive_identical=max_consecutive_identical,
-                    row_numbers=row_numbers,
-                    parsed_dates=parsed_dates,
-                    normalized_descriptions=normalized_descriptions,
+            _log_timing("validate_description_quality", t0)
+
+            if len(df) > max_consecutive_identical:
+                t0 = time.perf_counter()
+                issues.extend(
+                    detect_copy_paste_patterns(
+                        df,
+                        description_column=description_column,
+                        date_column=date_column,
+                        max_consecutive_identical=max_consecutive_identical,
+                        row_numbers=row_numbers,
+                        parsed_dates=parsed_dates,
+                        normalized_descriptions=normalized_descriptions,
+                    )
                 )
-            )
-            issues.extend(
-                validate_duplicate_entries(
-                    df,
-                    date_column=date_column,
-                    description_column=description_column,
-                    hours_column=hours_column,
-                    similarity_threshold=duplicate_similarity_threshold,
-                    min_duplicates=duplicate_min_occurrences,
-                    row_numbers=row_numbers,
-                    parsed_dates=parsed_dates,
-                    normalized_descriptions=normalized_descriptions,
+                _log_timing("detect_copy_paste_patterns", t0)
+            else:
+                logger.info("TIMING: detect_copy_paste_patterns omitido (pocas filas)")
+
+            if len(df) >= duplicate_min_occurrences:
+                t0 = time.perf_counter()
+                issues.extend(
+                    validate_duplicate_entries(
+                        df,
+                        date_column=date_column,
+                        description_column=description_column,
+                        hours_column=hours_column,
+                        similarity_threshold=duplicate_similarity_threshold,
+                        min_duplicates=duplicate_min_occurrences,
+                        row_numbers=row_numbers,
+                        parsed_dates=parsed_dates,
+                        normalized_descriptions=normalized_descriptions,
+                        enable_fuzzy=duplicate_fuzzy_enabled,
+                        fuzzy_max_text_len=duplicate_fuzzy_max_text_len,
+                        fuzzy_time_budget_sec=duplicate_fuzzy_time_budget_sec,
+                    )
                 )
-            )
+                _log_timing("validate_duplicate_entries", t0)
+            else:
+                logger.info("TIMING: validate_duplicate_entries omitido (pocas filas)")
+
+            t0 = time.perf_counter()
             issues.extend(
                 validate_reasonable_hours_per_task(
                     df,
@@ -1162,12 +1237,14 @@ def run_all_validations(
                     normalized_descriptions=normalized_descriptions,
                 )
             )
+            _log_timing("validate_reasonable_hours_per_task", t0)
         except Exception as exc:
             logger.exception("Error validando descripciones: %s", exc)
             raise
 
     if project_column:
         try:
+            t0 = time.perf_counter()
             issues.extend(
                 validate_project_consistency(
                     df,
@@ -1177,6 +1254,7 @@ def run_all_validations(
                     row_numbers=row_numbers,
                 )
             )
+            _log_timing("validate_project_consistency", t0)
         except Exception as exc:
             logger.exception("Error validando proyectos: %s", exc)
             raise
@@ -1184,6 +1262,7 @@ def run_all_validations(
     # Nueva validación: Ticket (opcional, permite valores vacíos)
     if ticket_column and ticket_column in df.columns:
         try:
+            t0 = time.perf_counter()
             issues.extend(
                 validate_ticket_format(
                     df,
@@ -1192,12 +1271,14 @@ def run_all_validations(
                     row_numbers=row_numbers,
                 )
             )
+            _log_timing("validate_ticket_format", t0)
         except Exception as exc:
             logger.exception("Error validando formato de ticket: %s", exc)
             raise
 
     # Nueva validación: campos vacíos (informativo)
     try:
+        t0 = time.perf_counter()
         issues.extend(
             validate_missing_fields(
                 df,
@@ -1207,6 +1288,7 @@ def run_all_validations(
                 row_numbers=row_numbers,
             )
         )
+        _log_timing("validate_missing_fields", t0)
     except Exception as exc:
         logger.exception("Error validando campos vacíos: %s", exc)
         raise
@@ -1214,6 +1296,7 @@ def run_all_validations(
     # Nueva validación: Completitud de días laborables
     if check_completeness:
         try:
+            t0 = time.perf_counter()
             issues.extend(
                 validate_working_days_completeness(
                     df,
@@ -1224,6 +1307,7 @@ def run_all_validations(
                     parsed_dates=parsed_dates,
                 )
             )
+            _log_timing("validate_working_days_completeness", t0)
         except Exception as exc:
             logger.exception("Error validando completitud de días laborables: %s", exc)
             raise

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Sequence, Tuple
+import time
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -32,14 +33,41 @@ def detect_and_remove_metadata_rows(
     hours_column: str,
     description_column: str,
     row_numbers: Optional[Sequence[int]] = None,
+    used_range: Optional[Dict[str, int]] = None,
 ) -> Tuple[pd.DataFrame, Optional[List[int]], int]:
     """Filtra filas de metadata y devuelve DF limpio + filas originales restantes."""
     if df.empty:
         return df.copy(), list(row_numbers) if row_numbers is not None else None, 0
 
+    t_start = time.perf_counter()
     work_df = df.copy()
+    logger.info(
+        "TIMING: data_cleaner.start rows=%d cols=%d used_range=%s",
+        len(work_df),
+        len(work_df.columns),
+        used_range or {},
+    )
+
+    # 0) Eliminar columnas 100% vacías (NaN o strings vacíos)
+    drop_cols = []
+    for col in work_df.columns:
+        series = work_df[col]
+        if series.isna().all():
+            drop_cols.append(col)
+            continue
+        try:
+            if series.astype(str).str.strip().eq("").all():
+                drop_cols.append(col)
+        except Exception:
+            continue
+    if drop_cols:
+        work_df = work_df.drop(columns=drop_cols)
+        logger.info("TIMING: data_cleaner.drop_empty_cols removed=%d", len(drop_cols))
     original_count = len(work_df)
     valid_mask = pd.Series(True, index=work_df.index)
+
+    cells_iterated = len(work_df) * len(work_df.columns)
+    logger.info("TIMING: data_cleaner.cells_iterated=%d", cells_iterated)
 
     empty_tokens = {"", "-", "---", "SN", "S/N"}
 
@@ -130,5 +158,6 @@ def detect_and_remove_metadata_rows(
     removed_count = original_count - len(cleaned_df)
     logger.info("Filas de metadata removidas: %d", removed_count)
     logger.info("Registros validos a procesar: %d", len(cleaned_df))
+    logger.info("TIMING: data_cleaner.total %.2fs", time.perf_counter() - t_start)
 
     return cleaned_df, cleaned_row_numbers, removed_count

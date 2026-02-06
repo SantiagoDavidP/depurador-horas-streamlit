@@ -2,6 +2,7 @@ from __future__ import annotations
 from collections import Counter
 
 import logging
+import time
 import os
 import re
 from dataclasses import dataclass, field
@@ -644,10 +645,14 @@ class TimeSheetProcessor:
         hours_tolerance_factor: float = 1.5,
         client_profile_id: Optional[str] = None,
         client_profile_settings: Optional[Dict[str, Any]] = None,
+        batch_fast_mode: bool = False,
+        enable_debug_exports: bool = True,
     ) -> ProcessorResult:
         # Desactivar IA para procesamiento (comentado por solicitud)
         correct_spelling = False
         df = parsed_sheet.dataframe.copy()
+        df = self._drop_empty_columns(df)
+        t_stage = time.perf_counter()
 
         # Normalizar tickets (quitar espacios) para aceptar valores alfanuméricos limpios.
         self._normalize_ticket_columns(df)
@@ -664,6 +669,8 @@ class TimeSheetProcessor:
         expected_hours = float(profile_settings.get("horas_esperadas_dia", self.expected_hours))
         row_numbers = self._get_row_numbers(parsed_sheet)
         raw_row_numbers = list(row_numbers)
+        logger.info("TIMING: preparar metadata en %.2fs", time.perf_counter() - t_stage)
+        t_stage = time.perf_counter()
 
         # BANINTER: tolerancia (ffill + columnas opcionales)
         is_baninter = self._is_baninter_profile(client_profile_id, metadata)
@@ -681,6 +688,8 @@ class TimeSheetProcessor:
             for optional_col in (resolved_mapping.get("phase"), resolved_mapping.get("id")):
                 if optional_col:
                     baninter_ignore_columns.append(optional_col)
+        logger.info("TIMING: baninter_preparacion en %.2fs", time.perf_counter() - t_stage)
+        t_stage = time.perf_counter()
 
         # Completar fechas agrupadas (celdas vacías) antes de validar el mapeo
         if mapping.date in df.columns:
@@ -723,6 +732,8 @@ class TimeSheetProcessor:
                 hours_col=mapping.hours,
                 description_col=mapping.description,
             )
+        logger.info("TIMING: validate_mapping en %.2fs", time.perf_counter() - t_stage)
+        t_stage = time.perf_counter()
 
         df_clean, cleaned_rows, removed_count = detect_and_remove_metadata_rows(
             df,
@@ -730,6 +741,7 @@ class TimeSheetProcessor:
             hours_column=mapping.hours,
             description_column=mapping.description,
             row_numbers=row_numbers,
+            used_range=metadata.get("used_range") if isinstance(metadata, dict) else None,
         )
         if cleaned_rows is not None:
             row_numbers = cleaned_rows
@@ -743,6 +755,8 @@ class TimeSheetProcessor:
             len(df_clean),
             len(df),
         )
+        logger.info("TIMING: limpiar_metadata en %.2fs", time.perf_counter() - t_stage)
+        t_stage = time.perf_counter()
 
         ticket_column = next(
             (col for col in df_clean.columns if "ticket" in str(col).lower()), None
@@ -757,22 +771,25 @@ class TimeSheetProcessor:
             ),
         }
 
-        # Debug: consolidado por fecha para detectar por qué no suma 8h
-        raw_debug = self._group_hours_debug_df(
-            df,
-            mapping=mapping,
-            row_numbers=raw_row_numbers,
-        )
-        clean_debug = self._group_hours_debug_df(
-            df_clean,
-            mapping=mapping,
-            row_numbers=row_numbers,
-        )
-        debug_hours_df = self._merge_hours_debug(
-            raw_debug,
-            clean_debug,
-            expected_hours=expected_hours,
-        )
+        debug_hours_df = None
+        debug_detail_df = None
+        if enable_debug_exports and not batch_fast_mode:
+            # Debug: consolidado por fecha para detectar por qué no suma 8h
+            raw_debug = self._group_hours_debug_df(
+                df,
+                mapping=mapping,
+                row_numbers=raw_row_numbers,
+            )
+            clean_debug = self._group_hours_debug_df(
+                df_clean,
+                mapping=mapping,
+                row_numbers=row_numbers,
+            )
+            debug_hours_df = self._merge_hours_debug(
+                raw_debug,
+                clean_debug,
+                expected_hours=expected_hours,
+            )
 
         validation_errors = run_all_validations(
             df_clean,
@@ -788,7 +805,10 @@ class TimeSheetProcessor:
             hours_tolerance_factor=hours_tolerance_factor,
             precomputed=precomputed_validation,
             missing_fields_ignore_columns=baninter_ignore_columns if is_baninter else None,
+            duplicate_fuzzy_enabled=not batch_fast_mode,
         )
+        logger.info("TIMING: validaciones en %.2fs", time.perf_counter() - t_stage)
+        t_stage = time.perf_counter()
         profile_specific = run_profile_validations(
             client_profile_id,
             df_clean,
@@ -862,22 +882,23 @@ class TimeSheetProcessor:
             else pd.DataFrame(columns=list(ValidationIssue.__annotations__.keys()))
         )
         errors_df = self._sort_errors_df(errors_df)
-        debug_detail_df = self._build_hours_debug_detail(
-            df=df,
-            mapping=mapping,
-            row_numbers=raw_row_numbers,
-            validation_errors=validation_errors,
-            stage_label="RAW",
-        )
-        debug_detail_clean = self._build_hours_debug_detail(
-            df=df_clean,
-            mapping=mapping,
-            row_numbers=row_numbers,
-            validation_errors=validation_errors,
-            stage_label="CLEAN",
-        )
-        if debug_detail_df is not None and debug_detail_clean is not None:
-            debug_detail_df = pd.concat([debug_detail_df, debug_detail_clean], ignore_index=True)
+        if enable_debug_exports and not batch_fast_mode:
+            debug_detail_df = self._build_hours_debug_detail(
+                df=df,
+                mapping=mapping,
+                row_numbers=raw_row_numbers,
+                validation_errors=validation_errors,
+                stage_label="RAW",
+            )
+            debug_detail_clean = self._build_hours_debug_detail(
+                df=df_clean,
+                mapping=mapping,
+                row_numbers=row_numbers,
+                validation_errors=validation_errors,
+                stage_label="CLEAN",
+            )
+            if debug_detail_df is not None and debug_detail_clean is not None:
+                debug_detail_df = pd.concat([debug_detail_df, debug_detail_clean], ignore_index=True)
 
         workbook_bytes = self._export_workbook(
             df_clean,
@@ -886,6 +907,7 @@ class TimeSheetProcessor:
             debug_hours_df=debug_hours_df,
             debug_detail_df=debug_detail_df,
         )
+        logger.info("TIMING: export_excel en %.2fs", time.perf_counter() - t_stage)
         output_filename = self._build_output_filename(source_name)
 
         uploaded_original = None
@@ -991,6 +1013,26 @@ class TimeSheetProcessor:
 
         for col in ticket_columns:
             df[col] = df[col].apply(_normalize)
+
+    @staticmethod
+    def _drop_empty_columns(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        drop_cols = []
+        for col in df.columns:
+            series = df[col]
+            if series.isna().all():
+                drop_cols.append(col)
+                continue
+            try:
+                if series.astype(str).str.strip().eq("").all():
+                    drop_cols.append(col)
+            except Exception:
+                continue
+        if drop_cols:
+            logger.info("Columnas fantasma removidas: %d", len(drop_cols))
+            return df.drop(columns=drop_cols)
+        return df
 
     @staticmethod
     def _normalize_ticket_validation_errors(

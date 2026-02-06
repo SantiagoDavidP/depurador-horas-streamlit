@@ -988,25 +988,27 @@ def run_batch_mode(
                 "Se aplicó mapeo inferido automáticamente."
             )
 
-        requests.append(
-            BatchFileRequest(
-                file_name=file_obj.name or "reporte.xlsx",
-                file_bytes=file_obj.getvalue(),
-                mapping=mapping_to_use,
-                client_id=effective_client_id,
-                header_keywords=header_keywords,
-                profile_settings=profile_settings,
-                parsed_sheet=parsed,
-                processor_kwargs={
-                    "correct_spelling": spelling_flag,
-                    "role": role_to_use,
-                    "project_name": mapping_to_use.project or "No especificado",
-                    "duplicate_similarity_threshold": duplicate_threshold,
-                    "duplicate_min_occurrences": min_duplicates_setting,
-                    "hours_tolerance_factor": hours_tolerance,
-                },
+            requests.append(
+                BatchFileRequest(
+                    file_name=file_obj.name or "reporte.xlsx",
+                    file_bytes=file_obj.getvalue(),
+                    mapping=mapping_to_use,
+                    client_id=effective_client_id,
+                    header_keywords=header_keywords,
+                    profile_settings=profile_settings,
+                    parsed_sheet=parsed,
+                    processor_kwargs={
+                        "correct_spelling": spelling_flag,
+                        "role": role_to_use,
+                        "project_name": mapping_to_use.project or "No especificado",
+                        "duplicate_similarity_threshold": duplicate_threshold,
+                        "duplicate_min_occurrences": min_duplicates_setting,
+                        "hours_tolerance_factor": hours_tolerance,
+                        "batch_fast_mode": True,
+                        "enable_debug_exports": False,
+                    },
+                )
             )
-        )
 
     # =========================
     # BOTÓN PROCESAR
@@ -1383,6 +1385,8 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
                     hours_tolerance_factor=float(selected_settings["hours_tolerance_factor"]),
                     client_profile_id=auto_profile_id,
                     client_profile_settings=selected_settings,
+                    batch_fast_mode=True,
+                    enable_debug_exports=False,
                 )
 
                 batch_results_accumulator.append(

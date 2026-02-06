@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 import re
 
 
@@ -86,6 +86,45 @@ def list_sheets(excel_bytes: bytes) -> List[str]:
     except Exception as exc:
         logger.exception("No se pudieron listar las hojas del archivo Excel: %s", exc)
         raise
+
+
+def detect_used_range_real(excel_bytes: bytes, sheet_name: str) -> Tuple[int, int]:
+    """
+    Detecta el rango real usado (max_row, max_col) basado SOLO en celdas con valores.
+    Evita ws.max_row/max_column inflados por formato.
+    """
+    max_row = 0
+    max_col = 0
+    try:
+        wb = load_workbook(BytesIO(excel_bytes), data_only=True)
+        ws = wb[sheet_name]
+        for (row, col), cell in getattr(ws, "_cells", {}).items():
+            value = cell.value
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            if row > max_row:
+                max_row = row
+            if col > max_col:
+                max_col = col
+        wb.close()
+    except Exception as exc:
+        logger.warning("No se pudo detectar used range real: %s", exc)
+
+    if max_row <= 0 or max_col <= 0:
+        # Fallback seguro
+        try:
+            wb = load_workbook(BytesIO(excel_bytes), data_only=True, read_only=True)
+            ws = wb[sheet_name]
+            max_row = ws.max_row or 1
+            max_col = ws.max_column or 1
+            wb.close()
+        except Exception:
+            max_row = max_row or 1
+            max_col = max_col or 1
+
+    return int(max_row), int(max_col)
 
 
 def _clean_row_values(df: pd.DataFrame, index: int) -> List[str]:
@@ -470,7 +509,20 @@ def load_sheet_with_header(
             sheet_name if sheet_name is not None
             else _select_best_sheet_from_excel_file(xls, header_keywords)
         )
-        temp_df = xls.parse(target_sheet, header=None)
+        max_row_real, max_col_real = detect_used_range_real(excel_bytes, target_sheet)
+        logger.info(
+            "Used range real detectado en '%s': rows=%d cols=%d",
+            target_sheet,
+            max_row_real,
+            max_col_real,
+        )
+        usecols = list(range(max_col_real)) if max_col_real > 0 else None
+        temp_df = xls.parse(
+            target_sheet,
+            header=None,
+            nrows=max_row_real if max_row_real > 0 else None,
+            usecols=usecols,
+        )
 
     header_idx = (
         header_row if header_row is not None
@@ -479,6 +531,7 @@ def load_sheet_with_header(
     metadata = _extract_metadata_rows(temp_df)
     metadata["sheet_name"] = target_sheet
     metadata["header_row"] = header_idx
+    metadata["used_range"] = {"max_row": max_row_real, "max_col": max_col_real}
     data_df = temp_df.iloc[header_idx + 1 :].copy()
     raw_columns = temp_df.iloc[header_idx].tolist()
 
@@ -532,6 +585,25 @@ def load_sheet_with_header(
             return list(df.columns)
         return cols
 
+    def _drop_empty_columns(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        drop_cols = []
+        for col in df.columns:
+            series = df[col]
+            if series.isna().all():
+                drop_cols.append(col)
+                continue
+            try:
+                if series.astype(str).str.strip().eq("").all():
+                    drop_cols.append(col)
+            except Exception:
+                continue
+        if drop_cols:
+            logger.info("Columnas vacias removidas: %d", len(drop_cols))
+            return df.drop(columns=drop_cols)
+        return df
+
     normalized_columns = _normalize_columns(raw_columns)
     normalized_columns = _assign_columns_safe(data_df, normalized_columns)
 
@@ -554,7 +626,9 @@ def load_sheet_with_header(
 
     data_df = _remove_junk_columns(data_df)
     data_df = _remove_junk_rows(data_df)
+    data_df = data_df.replace(r"^\s*$", pd.NA, regex=True)
     data_df = data_df.dropna(how="all")
+    data_df = _drop_empty_columns(data_df)
 
     # ---------------------------------------------------------
     # 2.1. Capturar footer original (contenido debajo de la tabla)
@@ -704,14 +778,16 @@ def load_sheet_with_header(
             logger.debug(f"Error refinando data_end_row: {e}")
         
         footer_start = data_end_row + 1
-        # Footer end es simplemente la última fila del worksheet
-        # (para capturar TODO el footer incluyendo filas vacías en el medio)
-        footer_end = ws.max_row
+        # Footer end: usar used range real para evitar rangos inflados por formato
+        used_range = metadata.get("used_range") or {}
+        max_row_real = int(used_range.get("max_row") or ws.max_row or 1)
+        max_col_real = int(used_range.get("max_col") or ws.max_column or 1)
+        footer_end = max_row_real
         
         logger.debug(f"Footer range: {footer_start} - {footer_end} (data_end: {data_end_row})")
         
         if footer_start <= footer_end:
-            max_col = ws.max_column
+            max_col = max_col_real
             cells = []
             row_heights: Dict[int, float] = {}
             merge_ranges = []
@@ -725,6 +801,7 @@ def load_sheet_with_header(
                         for c in range(min_col, max_col_m + 1):
                             merged_coords.add((r, c))
 
+            cells_iterated = 0
             for r in range(footer_start, footer_end + 1):
                 height = ws.row_dimensions[r].height
                 if height:
@@ -734,6 +811,7 @@ def load_sheet_with_header(
                     value_cell = ws_values.cell(row=r, column=c)
                     # Para el footer, capturar TODAS las celdas, incluyendo las vacías
                     # porque pueden tener estilos o ser parte de la estructura
+                    cells_iterated += 1
                     cells.append(
                         {
                             "row": r,
@@ -757,6 +835,12 @@ def load_sheet_with_header(
                     "row_heights": row_heights,
                     "merges": merge_ranges,
                 }
+            logger.info(
+                "Footer capture: filas=%d cols=%d celdas_iteradas=%d",
+                (footer_end - footer_start + 1),
+                max_col,
+                cells_iterated,
+            )
         wb.close()
         wb_values.close()
     except Exception as exc:
