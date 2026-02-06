@@ -16,6 +16,7 @@ _METADATA_KEYWORDS = [
     "tipo hora",
     "repositorio",
     "sharepoint",
+    "documentacion",
     "documentación",
     "firma",
     "revision",
@@ -40,10 +41,9 @@ def detect_and_remove_metadata_rows(
     original_count = len(work_df)
     valid_mask = pd.Series(True, index=work_df.index)
 
-    # ---------------------------------------------------------
-    # 1) Eliminar filas totalmente vacías (NaN, "", " ", "-", "---")
-    # ---------------------------------------------------------
-    empty_tokens = {"", "-", "---"}
+    empty_tokens = {"", "-", "---", "SN", "S/N"}
+
+    # 1) Eliminar filas totalmente vacias (NaN, "", " ", "-", "---")
     empty_like_cols = []
     for col in work_df.columns:
         col_series = work_df[col]
@@ -54,27 +54,20 @@ def detect_and_remove_metadata_rows(
     all_empty_mask = pd.concat(empty_like_cols, axis=1).all(axis=1)
     valid_mask &= ~all_empty_mask
 
-    # ---------------------------------------------------------
-    # 2) Filas sin descripción válida (aunque tengan fecha/horas)
-    # ---------------------------------------------------------
+    # 2) Filas sin descripcion valida
     desc_series = work_df[description_column].astype(str)
     desc_clean = desc_series.str.strip()
     desc_is_empty = desc_series.isna() | desc_clean.isin(empty_tokens) | desc_clean.eq("")
     valid_mask &= ~desc_is_empty
 
-    # ---------------------------------------------------------
-    # 3) Filas de resumen (según descripción)
-    # ---------------------------------------------------------
+    # 3) Filas de resumen (segun descripcion)
     summary_keywords = ["total", "resumen", "suma", "acumulado"]
     desc_lower = desc_clean.str.lower()
-    is_summary = pd.Series(False, index=work_df.index)
-    for keyword in summary_keywords:
-        is_summary |= desc_lower.str.contains(keyword, na=False)
+    summary_pattern = r"^(?:%s)(?:\s|$)" % "|".join(summary_keywords)
+    is_summary = desc_lower.str.contains(summary_pattern, na=False, regex=True)
     valid_mask &= ~is_summary
 
-    # ---------------------------------------------------------
-    # 4) Metadata por columna fecha (mantener lógica existente)
-    # ---------------------------------------------------------
+    # 4) Metadata por columna fecha (mantener logica existente)
     date_series = work_df[date_column].astype(str).str.lower()
     for keyword in _METADATA_KEYWORDS:
         valid_mask &= ~date_series.str.contains(keyword, na=False)
@@ -84,11 +77,46 @@ def detect_and_remove_metadata_rows(
     )
     valid_mask &= parsed_dates.notna()
 
-    numeric_hours = pd.to_numeric(work_df[hours_column], errors="coerce")
-    valid_mask &= numeric_hours.notna()
+    # Normalizar horas para no perder filas con formatos como "7,5" o "8h"
+    hours_series = work_df[hours_column]
+    if hours_series.dtype == object:
+        hours_series = (
+            hours_series.astype(str)
+            .str.replace(",", ".", regex=False)
+            .str.replace(r"[^0-9\.\-]", "", regex=True)
+        )
+    numeric_hours = pd.to_numeric(hours_series, errors="coerce")
 
-    # Definición estricta de fila válida:
-    # fecha válida AND horas numéricas AND descripción no vacía
+    # 5) Si no hay descripcion y no hay horas reales, excluir (footer/totales)
+    no_hours = numeric_hours.isna() | (numeric_hours == 0)
+    invalid_payload = desc_is_empty & no_hours
+    valid_mask &= ~invalid_payload
+
+    # 6) Filas tipo footer: fecha + numero suelto (ej: 176, 0)
+    hours_missing_or_zero = numeric_hours.isna() | (numeric_hours == 0)
+    desc_numeric = desc_clean.str.fullmatch(r"\d+(\.\d+)?", na=False)
+    non_core_cols = [
+        col
+        for col in work_df.columns
+        if col not in {date_column, hours_column, description_column}
+    ]
+    non_core_non_empty_count = pd.Series(0, index=work_df.index)
+    if non_core_cols:
+        for col in non_core_cols:
+            series = work_df[col]
+            non_empty = (
+                series.notna()
+                & series.astype(str).str.strip().ne("")
+                & ~series.astype(str).str.strip().isin(empty_tokens)
+            )
+            non_core_non_empty_count += non_empty.astype(int)
+
+    footer_like = (
+        hours_missing_or_zero
+        & (desc_is_empty | desc_numeric)
+        & (non_core_non_empty_count <= 1)
+    )
+    valid_mask &= ~footer_like
 
     cleaned_df = work_df[valid_mask].reset_index(drop=True)
     cleaned_row_numbers: Optional[List[int]] = None
@@ -101,6 +129,6 @@ def detect_and_remove_metadata_rows(
 
     removed_count = original_count - len(cleaned_df)
     logger.info("Filas de metadata removidas: %d", removed_count)
-    logger.info("Registros válidos a procesar: %d", len(cleaned_df))
+    logger.info("Registros validos a procesar: %d", len(cleaned_df))
 
     return cleaned_df, cleaned_row_numbers, removed_count

@@ -516,8 +516,24 @@ def load_sheet_with_header(
             normalized.append(col_str)
         return normalized
 
+    def _assign_columns_safe(df: pd.DataFrame, columns: List[str]) -> List[str]:
+        cols = list(columns)
+        if len(cols) != df.shape[1]:
+            if len(cols) > df.shape[1]:
+                cols = cols[: df.shape[1]]
+            else:
+                extra = df.shape[1] - len(cols)
+                cols = cols + [f"Col_{i+1}" for i in range(extra)]
+        try:
+            df.columns = cols
+        except ValueError:
+            # Fallback absoluto: evitar crash por desalineacion
+            df.columns = [f"Col_{i+1}" for i in range(df.shape[1])]
+            return list(df.columns)
+        return cols
+
     normalized_columns = _normalize_columns(raw_columns)
-    data_df.columns = normalized_columns
+    normalized_columns = _assign_columns_safe(data_df, normalized_columns)
 
     # Reintento de Header
     if header_keywords:
@@ -532,7 +548,9 @@ def load_sheet_with_header(
                 header_idx = best_r
                 metadata["header_row"] = header_idx
                 data_df = temp_df.iloc[best_r + 1 :].copy()
-                data_df.columns = normalized_columns
+                raw_columns = temp_df.iloc[header_idx].tolist()
+                normalized_columns = _normalize_columns(raw_columns)
+                normalized_columns = _assign_columns_safe(data_df, normalized_columns)
 
     data_df = _remove_junk_columns(data_df)
     data_df = _remove_junk_rows(data_df)

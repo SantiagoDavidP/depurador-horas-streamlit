@@ -255,7 +255,7 @@ def render_metadata_summary(
     metadata: Optional[Dict[str, object]],
     *,
     employee_info: Optional[Dict[str, Optional[str]]] = None,
-    title: str = "📄 Metadata",
+    title: str = "Metadata",
 ) -> None:
     if not metadata:
         return
@@ -263,21 +263,46 @@ def render_metadata_summary(
     details = []
     if employee_info:
         if employee_info.get("metadata"):
-            details.append(("👤 Empleado", employee_info["metadata"]))
+            details.append(("Empleado", employee_info["metadata"]))
         elif employee_info.get("final"):
-            details.append(("👤 Empleado", employee_info["final"]))
+            details.append(("Empleado", employee_info["final"]))
     if metadata.get("company"):
-        details.append(("🏢 Empresa", metadata.get("company")))
+        details.append(("Empresa", metadata.get("company")))
     if metadata.get("period_start") and metadata.get("period_end"):
-        details.append(("📅 Periodo", f"{metadata['period_start']} → {metadata['period_end']}"))
+        details.append(("Periodo", f"{metadata['period_start']} -> {metadata['period_end']}"))
     if metadata.get("month_name"):
-        details.append(("📆 Mes", metadata.get("month_name")))
+        details.append(("Mes", metadata.get("month_name")))
 
     if not details:
         return
 
     with st.expander(title, expanded=False):
         render_info_grid(details)
+
+
+def render_baninter_report(report: Optional[Dict[str, object]]) -> None:
+    if not report:
+        return
+    missing_cols = report.get("missing_optional_columns") or []
+    filled_fecha = report.get("filled_fecha", 0)
+    filled_proyecto = report.get("filled_proyecto", 0)
+    filled_fase = report.get("filled_fase", 0)
+    valid_before = report.get("valid_before", 0)
+    valid_after = report.get("valid_after", 0)
+    coverage_before = report.get("coverage_before", 0.0)
+    coverage_after = report.get("coverage_after", 0.0)
+    warnings = report.get("warnings") or []
+
+    with st.expander("BANINTER - Imputaciones", expanded=False):
+        missing_text = ", ".join(missing_cols) if missing_cols else "Ninguna"
+        st.markdown(f"**Columnas de interes faltantes:** {missing_text}")
+        st.markdown(f"**Imputaciones:** Fecha={filled_fecha}, Proyecto={filled_proyecto}, Fase={filled_fase}")
+        st.markdown(
+            f"**Filas validas:** antes={valid_before} ({coverage_before:.0%}), despues={valid_after} ({coverage_after:.0%})"
+        )
+        if warnings:
+            for w in warnings:
+                st.warning(w)
 
 
 def render_holiday_block(
@@ -482,8 +507,6 @@ def auto_detect_profile_from_files(
 
 
 def render_batch_sidebar() -> Dict[str, object]:
-    render_user_info_sidebar()
-    st.sidebar.markdown("---")
     st.sidebar.markdown("**📁 Archivos**")
 
     # ⬇️ uploader NORMAL
@@ -851,23 +874,6 @@ def run_batch_mode(
 
     preview_metadata: Optional[Dict[str, object]] = None
     if profile_obj is None:
-        detected_profile_id, preview_metadata = auto_detect_profile_from_files(
-            uploaded_files
-        )
-        if detected_profile_id and detected_profile_id in profiles_catalog:
-            profile_obj = profiles_catalog[detected_profile_id]
-            profile_id = detected_profile_id
-            st.session_state["batch_selected_profile"] = detected_profile_id
-            st.success(f"🎯 Cliente detectado: **{profile_obj.name}**")
-
-    if preview_metadata:
-        emp = resolve_employee(preview_metadata, uploaded_files[0].name)
-        render_metadata_summary(preview_metadata, employee_info=emp)
-
-    # =========================
-    # MAPPING BASE
-    # =========================
-    if profile_obj is None:
         base_mapping = build_mapping_from_values(
             batch_state.get("mapping_values", {})
         )
@@ -1012,6 +1018,8 @@ def run_batch_mode(
     ):
         progress_placeholder = st.empty()
         progress_bar = st.progress(0)
+        progress_placeholder.info("⏳ Iniciando procesamiento...")
+        progress_bar.progress(1)
 
         def update_progress(
             current: int, total: int, message: str
@@ -1066,7 +1074,8 @@ def render_batch_results():
             render_metadata_summary(
                 md, employee_info=emp_info, title=f"📄 {result.file_name}"
             )
-
+            if is_baninter_result(result):
+                render_baninter_report(md.get("baninter_report"))
             metrics = st.columns(4)
             metrics[0].metric("📝 Registros", s.total_registros)
             metrics[1].metric("⏰ Horas", f"{s.horas_totales:.1f}")
@@ -1477,6 +1486,9 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
             c4.metric("📈 Score", f"{summ.quality_score:.0f}%")
 
             if is_baninter_result(res):
+                render_baninter_report(md.get("baninter_report"))
+
+            if is_baninter_result(res):
                 try:
                     business_bytes, business_name = generate_individual_business_it_excel(
                         res, cliente="BANINTER"
@@ -1592,6 +1604,9 @@ with st.sidebar:
         st.session_state.pop("auto_mapping_detected", None)
 
     st.session_state["_prev_batch_profile"] = current_profile
+
+    # Usuario (siempre al final del sidebar)
+    render_user_info_sidebar()
 
 
 

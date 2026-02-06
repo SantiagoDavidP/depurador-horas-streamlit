@@ -22,8 +22,10 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.drawing.image import Image
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
+from openpyxl.drawing.xdr import XDRPositiveSize2D
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -269,6 +271,895 @@ class TimeSheetConsolidator:
             ws.add_image(img)
         except Exception as exc:
             logger.warning("No se pudo agregar logo (%s): %s", path, exc)
+
+    @staticmethod
+    def _column_width_to_pixels(width: Optional[float]) -> int:
+        # Aproximación estándar: Excel width -> px
+        if width is None:
+            width = 8.43
+        return int(round(width * 7 + 5))
+
+    @staticmethod
+    def _row_height_to_pixels(height: Optional[float], default_height: Optional[float]) -> int:
+        points = height if height is not None else (default_height or 15.0)
+        return int(round(points * (96 / 72)))
+
+    def _column_width_to_emu(self, width: Optional[float]) -> int:
+        emu_per_px = 9525
+        return self._column_width_to_pixels(width) * emu_per_px
+
+    def _row_height_to_emu(self, height: Optional[float], default_height: Optional[float]) -> int:
+        points = height if height is not None else (default_height or 15.0)
+        return int(round(points * 12700))
+
+    def _detect_header_band(
+        self,
+        ws: Worksheet,
+        title_texts: List[str],
+    ) -> Tuple[int, int, int, int]:
+        """Detecta banda de header usando el rango merged del tÃ­tulo."""
+        title_texts = [t.lower() for t in title_texts]
+        title_cell = None
+        for row in ws.iter_rows(min_row=1, max_row=8):
+            for cell in row:
+                if cell.value and any(t in str(cell.value).lower() for t in title_texts):
+                    title_cell = cell
+                    break
+            if title_cell:
+                break
+
+        if not title_cell:
+            return (1, 1, 1, ws.max_column or 1)
+
+        # Buscar rango merged que contiene el tÃ­tulo
+        merged_range = None
+        for mr in ws.merged_cells.ranges:
+            if mr.min_row <= title_cell.row <= mr.max_row and mr.min_col <= title_cell.column <= mr.max_col:
+                merged_range = mr
+                break
+
+        if not merged_range:
+            return (title_cell.row, title_cell.row, 1, ws.max_column or 1)
+
+        r1 = merged_range.min_row
+        r2 = merged_range.max_row
+        c1 = merged_range.min_col
+        c2 = merged_range.max_col
+
+        # Extender hacia abajo mientras haya fill en la banda
+        max_scan = min(r1 + 6, ws.max_row)
+        for r in range(r1, max_scan + 1):
+            has_fill = False
+            for c in range(c1, c2 + 1):
+                cell = ws.cell(row=r, column=c)
+                if cell.fill and cell.fill.fill_type:
+                    has_fill = True
+                    break
+            if has_fill:
+                r2 = r
+            else:
+                break
+        return (r1, r2, c1, c2)
+
+    def _position_header_logo(
+        self,
+        ws: Worksheet,
+        img_path: Path,
+        *,
+        header_rows: Optional[Tuple[int, int]] = None,
+        logo_block_cols: Optional[Tuple[int, int]] = None,
+        title_texts: Optional[List[str]] = None,
+        max_width: int = 140,
+        max_height: int = 48,
+    ) -> None:
+        """Inserta logo centrado vertical y horizontalmente dentro del header."""
+        if not img_path.exists():
+            return
+
+        # Detectar banda de header
+        if header_rows is None or logo_block_cols is None:
+            r1, r2, c1, c2 = self._detect_header_band(
+                ws, title_texts or ["informe de actividades", "informe consolidado de actividades"]
+            )
+            if header_rows is None:
+                header_rows = (r1, r2)
+            if logo_block_cols is None:
+                # por defecto usa las Ãºltimas 2 columnas del header
+                logo_block_cols = (max(c2 - 1, c1), c2)
+
+        r1, r2 = header_rows
+        c1, c2 = logo_block_cols
+
+        # Eliminar logos previos en esa zona
+        kept_images = []
+        for img in getattr(ws, "_images", []):
+            anchor = img.anchor
+            img_col = None
+            img_row = None
+            if isinstance(anchor, str):
+                try:
+                    col_letter, row = re.match(r"([A-Z]+)(\d+)", anchor).groups()
+                    img_col = column_index_from_string(col_letter)
+                    img_row = int(row)
+                except Exception:
+                    img_col = None
+            elif hasattr(anchor, "_from"):
+                img_col = anchor._from.col + 1
+                img_row = anchor._from.row + 1
+
+            if img_col is not None and img_row is not None:
+                if c1 <= img_col <= c2 and r1 <= img_row <= r2:
+                    continue
+            kept_images.append(img)
+        ws._images = kept_images
+
+        img = Image(str(img_path))
+        if not img.width or not img.height:
+            return
+
+        # Escalar al mÃ¡ximo permitido
+        width_scale = max_width / float(img.width)
+        height_scale = max_height / float(img.height)
+        scale = min(width_scale, height_scale)
+        img.width = int(img.width * scale)
+        img.height = int(img.height * scale)
+
+        # Calcular tamaÃ±o del header en px
+        header_height_px = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        for r in range(r1, r2 + 1):
+            header_height_px += self._row_height_to_pixels(ws.row_dimensions[r].height, default_height)
+
+        header_width_px = 0
+        for c in range(c1, c2 + 1):
+            col_letter = get_column_letter(c)
+            header_width_px += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+
+        x_off_px = max(int(round((header_width_px - img.width) / 2)), 0)
+        y_off_px = max(int(round((header_height_px - img.height) / 2)), 0)
+
+        # EMU (openpyxl)
+        emu_per_px = 9525
+        marker = AnchorMarker(col=c1 - 1, colOff=x_off_px * emu_per_px, row=r1 - 1, rowOff=y_off_px * emu_per_px)
+        ext = XDRPositiveSize2D(img.width * emu_per_px, img.height * emu_per_px)
+        img.anchor = OneCellAnchor(_from=marker, ext=ext)
+        ws.add_image(img)
+
+    def _find_title_merge(
+        self,
+        ws: Worksheet,
+        title_text: str,
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """Encuentra el rango merged que contiene el tÃ­tulo."""
+        target = title_text.lower()
+        title_cell = None
+        for row in ws.iter_rows(min_row=1, max_row=8):
+            for cell in row:
+                if cell.value and target in str(cell.value).lower():
+                    title_cell = cell
+                    break
+            if title_cell:
+                break
+        if not title_cell:
+            return None
+        for mr in ws.merged_cells.ranges:
+            if mr.min_row <= title_cell.row <= mr.max_row and mr.min_col <= title_cell.column <= mr.max_col:
+                return (mr.min_row, mr.max_row, mr.min_col, mr.max_col)
+        return (title_cell.row, title_cell.row, title_cell.column, title_cell.column)
+
+    def _find_title_merge_any(
+        self,
+        ws: Worksheet,
+        title_texts: List[str],
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """Encuentra el rango merged que contiene cualquiera de los tÃƒÂ­tulos."""
+        targets = [t.lower() for t in title_texts]
+        title_cell = None
+        for row in ws.iter_rows(min_row=1, max_row=8):
+            for cell in row:
+                if cell.value:
+                    cell_text = str(cell.value).lower()
+                    if any(t in cell_text for t in targets):
+                        title_cell = cell
+                        break
+            if title_cell:
+                break
+        if not title_cell:
+            return None
+        for mr in ws.merged_cells.ranges:
+            if mr.min_row <= title_cell.row <= mr.max_row and mr.min_col <= title_cell.column <= mr.max_col:
+                return (mr.min_row, mr.max_row, mr.min_col, mr.max_col)
+        return (title_cell.row, title_cell.row, title_cell.column, title_cell.column)
+
+    def _get_last_header_col(
+        self,
+        ws: Worksheet,
+        header_rows: Tuple[int, int],
+        title_merge: Optional[Tuple[int, int, int, int]],
+    ) -> int:
+        """Detecta la Ãºltima columna usada en el header."""
+        r1, r2 = header_rows
+        last_col = title_merge[3] if title_merge else ws.max_column or 1
+        max_col_scan = ws.max_column or last_col
+        for c in range(1, max_col_scan + 1):
+            for r in range(r1, r2 + 1):
+                cell = ws.cell(row=r, column=c)
+                if cell.value is not None:
+                    last_col = max(last_col, c)
+                if cell.fill and cell.fill.fill_type:
+                    last_col = max(last_col, c)
+        return last_col
+
+    def get_header_rows(
+        self,
+        ws: Worksheet,
+        title_texts: Optional[List[str]] = None,
+    ) -> Tuple[Tuple[int, int], int, Optional[Tuple[int, int, int, int]]]:
+        """Devuelve filas del header, alto en EMU y rango del título."""
+        if not title_texts:
+            title_texts = ["Informe de Actividades", "Informe Consolidado de Actividades"]
+        title_merge = self._find_title_merge_any(ws, title_texts)
+        if title_merge:
+            title_min_row, title_max_row, title_min_col, title_max_col = title_merge
+            header_start = 1
+            header_end = title_max_row
+            max_scan = min(title_max_row + 6, ws.max_row)
+            for r in range(title_max_row + 1, max_scan + 1):
+                has_fill = False
+                for c in range(title_min_col, title_max_col + 1):
+                    cell = ws.cell(row=r, column=c)
+                    if cell.fill and cell.fill.fill_type:
+                        has_fill = True
+                        break
+                if has_fill:
+                    header_end = r
+                else:
+                    break
+        else:
+            header_start = 1
+            header_end = min(3, ws.max_row or 3)
+
+        header_rows = (header_start, header_end)
+        header_height_emu = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        for r in range(header_start, header_end + 1):
+            header_height_emu += self._row_height_to_emu(ws.row_dimensions[r].height, default_height)
+        return header_rows, header_height_emu, title_merge
+
+    def get_header_width(
+        self,
+        ws: Worksheet,
+        header_rows: Tuple[int, int],
+        title_merge: Optional[Tuple[int, int, int, int]],
+    ) -> Tuple[int, int]:
+        """Devuelve ancho del header en EMU y última columna usada."""
+        last_col = self._get_last_header_col(ws, header_rows, title_merge)
+        header_width_emu = 0
+        for c in range(1, last_col + 1):
+            col_letter = get_column_letter(c)
+            header_width_emu += self._column_width_to_emu(ws.column_dimensions[col_letter].width)
+        return header_width_emu, last_col
+
+    def _get_title_x_range_emu(
+        self,
+        ws: Worksheet,
+        title_merge: Optional[Tuple[int, int, int, int]],
+        header_width_emu: int,
+    ) -> Tuple[int, int]:
+        if not title_merge or header_width_emu <= 0:
+            return (int(round(header_width_emu * 0.35)), int(round(header_width_emu * 0.65)))
+        _, _, title_min_col, title_max_col = title_merge
+        start_x = 0
+        for c in range(1, title_min_col):
+            col_letter = get_column_letter(c)
+            start_x += self._column_width_to_emu(ws.column_dimensions[col_letter].width)
+        end_x = start_x
+        for c in range(title_min_col, title_max_col + 1):
+            col_letter = get_column_letter(c)
+            end_x += self._column_width_to_emu(ws.column_dimensions[col_letter].width)
+        if start_x <= header_width_emu * 0.1 and end_x >= header_width_emu * 0.9:
+            return (int(round(header_width_emu * 0.35)), int(round(header_width_emu * 0.65)))
+        return (start_x, end_x)
+
+    def xy_to_anchor(
+        self,
+        ws: Worksheet,
+        x_emu: int,
+        y_emu: int,
+        start_row: int = 1,
+    ) -> Tuple[int, int, int, int]:
+        """Convierte x/y en EMU a (col,row,colOff,rowOff) 0-based."""
+        x_emu = max(int(x_emu), 0)
+        y_emu = max(int(y_emu), 0)
+
+        col_idx = 1
+        x_acc = 0
+        while True:
+            col_letter = get_column_letter(col_idx)
+            col_w = self._column_width_to_emu(ws.column_dimensions[col_letter].width)
+            if x_acc + col_w > x_emu or col_idx >= (ws.max_column or 1):
+                break
+            x_acc += col_w
+            col_idx += 1
+        col_off = max(x_emu - x_acc, 0)
+
+        row_idx = start_row
+        y_acc = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        max_row = ws.max_row or start_row
+        while True:
+            row_h = self._row_height_to_emu(ws.row_dimensions[row_idx].height, default_height)
+            if y_acc + row_h > y_emu or row_idx >= max_row:
+                break
+            y_acc += row_h
+            row_idx += 1
+        row_off = max(y_emu - y_acc, 0)
+
+        return col_idx - 1, row_idx - 1, int(col_off), int(row_off)
+
+    def _image_anchor_xy_emu(
+        self,
+        ws: Worksheet,
+        img: Image,
+    ) -> Optional[Tuple[int, int, int]]:
+        anchor = img.anchor
+        emu_per_px = 9525
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+
+        def _col_start(col_idx: int) -> int:
+            total = 0
+            for c in range(1, col_idx):
+                col_letter = get_column_letter(c)
+                total += self._column_width_to_emu(ws.column_dimensions[col_letter].width)
+            return total
+
+        def _row_start(row_idx: int) -> int:
+            total = 0
+            for r in range(1, row_idx):
+                total += self._row_height_to_emu(ws.row_dimensions[r].height, default_height)
+            return total
+
+        if isinstance(anchor, str):
+            try:
+                col_letter, row = re.match(r"([A-Z]+)(\d+)", anchor).groups()
+                col_idx = column_index_from_string(col_letter)
+                row_idx = int(row)
+                x_emu = _col_start(col_idx)
+                y_emu = _row_start(row_idx)
+                return (x_emu, y_emu, row_idx)
+            except Exception:
+                return None
+        if hasattr(anchor, "_from"):
+            try:
+                col_idx = anchor._from.col + 1
+                row_idx = anchor._from.row + 1
+                col_off = int(getattr(anchor._from, "colOff", 0))
+                row_off = int(getattr(anchor._from, "rowOff", 0))
+                x_emu = _col_start(col_idx) + col_off
+                y_emu = _row_start(row_idx) + row_off
+                return (x_emu, y_emu, row_idx)
+            except Exception:
+                return None
+        if hasattr(anchor, "col") and hasattr(anchor, "row"):
+            try:
+                col_idx = int(anchor.col) + 1
+                row_idx = int(anchor.row) + 1
+                x_emu = _col_start(col_idx)
+                y_emu = _row_start(row_idx)
+                return (x_emu, y_emu, row_idx)
+            except Exception:
+                return None
+        # Fallback con imagen en px si no hay anchor
+        if img.width and img.height:
+            return (0, 0, 1)
+        return None
+
+    def extract_logo_reference_from_resumen(
+        self,
+        wb: Workbook,
+    ) -> Optional[Tuple[Dict[str, int], Dict[str, int]]]:
+        """Extrae tamaños (cx/cy) desde la hoja Resumen para BIT y NOVA."""
+        ws = wb["Resumen"] if "Resumen" in wb.sheetnames else wb.worksheets[0]
+        header_rows, header_height_emu, _ = self.get_header_rows(ws)
+        header_height_emu = max(header_height_emu, 1)
+
+        header_images: List[Tuple[Image, int]] = []
+        for img in getattr(ws, "_images", []):
+            pos = self._image_anchor_xy_emu(ws, img)
+            if not pos:
+                continue
+            x_emu, _, row_idx = pos
+            if header_rows[0] <= row_idx <= header_rows[1]:
+                header_images.append((img, x_emu))
+
+        if len(header_images) < 2:
+            return None
+
+        header_images.sort(key=lambda item: item[1])
+        left_img = header_images[0][0]
+        right_img = header_images[-1][0]
+
+        def _extract_ext(img: Image) -> Optional[Tuple[int, int]]:
+            if hasattr(img.anchor, "ext") and img.anchor.ext:
+                cx = int(getattr(img.anchor.ext, "cx", 0))
+                cy = int(getattr(img.anchor.ext, "cy", 0))
+                if cx > 0 and cy > 0:
+                    return (cx, cy)
+            if img.width and img.height:
+                emu_per_px = 9525
+                return (int(img.width) * emu_per_px, int(img.height) * emu_per_px)
+            return None
+
+        left_ext = _extract_ext(left_img)
+        right_ext = _extract_ext(right_img)
+        if not left_ext or not right_ext:
+            return None
+
+        return (
+            {"cx": left_ext[0], "cy": left_ext[1]},
+            {"cx": right_ext[0], "cy": right_ext[1]},
+        )
+
+    def normalize_sheet_header_logos(
+        self,
+        ws: Worksheet,
+        ref_bit: Dict[str, int],
+        ref_nova: Dict[str, int],
+        bit_logo_path: Optional[Path],
+        nova_logo_path: Optional[Path],
+        *,
+        title_texts: Optional[List[str]] = None,
+    ) -> None:
+        if not bit_logo_path or not nova_logo_path:
+            return
+        if not bit_logo_path.exists() or not nova_logo_path.exists():
+            return
+
+        header_rows, header_height_emu, title_merge = self.get_header_rows(ws, title_texts)
+        header_width_emu, _ = self.get_header_width(ws, header_rows, title_merge)
+        if header_width_emu <= 0 or header_height_emu <= 0:
+            return
+
+        title_x_start_emu, title_x_end_emu = self._get_title_x_range_emu(ws, title_merge, header_width_emu)
+
+        # Eliminar logos existentes (izq/der) sin tocar otras imágenes
+        header_images: List[Tuple[Image, int]] = []
+        for img in getattr(ws, "_images", []):
+            pos = self._image_anchor_xy_emu(ws, img)
+            if not pos:
+                continue
+            x_emu, _, row_idx = pos
+            if header_rows[0] <= row_idx <= header_rows[1]:
+                header_images.append((img, x_emu))
+
+        to_remove: Set[Image] = set()
+        if header_images:
+            header_images.sort(key=lambda item: item[1])
+            to_remove.add(header_images[0][0])
+            to_remove.add(header_images[-1][0])
+
+        ws._images = [img for img in getattr(ws, "_images", []) if img not in to_remove]
+
+        emu_per_px = 9525
+        margin_left_emu = int(round(18 * emu_per_px))
+        margin_right_emu = int(round(24 * emu_per_px))
+        gap_title_emu = int(round(12 * emu_per_px))
+
+        # BIT (izquierda)
+        bit_cx = int(ref_bit.get("cx", 0))
+        bit_cy = int(ref_bit.get("cy", 0))
+        if bit_cx > 0 and bit_cy > 0:
+            bit_y = max(int(round((header_height_emu - bit_cy) / 2)), 0)
+            bit_x = margin_left_emu
+            max_left = max(title_x_start_emu - gap_title_emu, 0)
+            x_max = max_left - bit_cx
+            if bit_x > x_max:
+                bit_x = max(0, x_max)
+            if bit_x + bit_cx > max_left:
+                available = max_left
+                scale = min(
+                    available / float(bit_cx) if bit_cx else 0.0,
+                    header_height_emu / float(bit_cy) if bit_cy else 0.0,
+                ) * 0.98
+                if scale > 0 and scale < 1:
+                    bit_cx = max(int(bit_cx * scale), 1)
+                    bit_cy = max(int(bit_cy * scale), 1)
+                    bit_y = max(int(round((header_height_emu - bit_cy) / 2)), 0)
+                    bit_x = max(0, max_left - bit_cx)
+                    logger.info("Escalado de emergencia aplicado al logo BIT (%.2f).", scale)
+            self.place_logo_fixed(ws, bit_logo_path, bit_cx, bit_cy, bit_x, bit_y, header_rows[0])
+
+        # NOVA (derecha)
+        nova_cx = int(ref_nova.get("cx", 0))
+        nova_cy = int(ref_nova.get("cy", 0))
+        if nova_cx > 0 and nova_cy > 0:
+            nova_y = max(int(round((header_height_emu - nova_cy) / 2)), 0)
+            nova_x = header_width_emu - margin_right_emu - nova_cx
+            min_right = title_x_end_emu + gap_title_emu
+            if nova_x < min_right:
+                nova_x = min_right
+            if nova_x + nova_cx > header_width_emu:
+                nova_x = max(0, header_width_emu - nova_cx)
+            if nova_x < min_right:
+                available = max(header_width_emu - min_right, 0)
+                scale = min(
+                    available / float(nova_cx) if nova_cx else 0.0,
+                    header_height_emu / float(nova_cy) if nova_cy else 0.0,
+                ) * 0.98
+                if scale > 0 and scale < 1:
+                    nova_cx = max(int(nova_cx * scale), 1)
+                    nova_cy = max(int(nova_cy * scale), 1)
+                    nova_y = max(int(round((header_height_emu - nova_cy) / 2)), 0)
+                    nova_x = max(0, header_width_emu - margin_right_emu - nova_cx)
+                    logger.info("Escalado de emergencia aplicado al logo NOVA (%.2f).", scale)
+            self.place_logo_fixed(ws, nova_logo_path, nova_cx, nova_cy, nova_x, nova_y, header_rows[0])
+
+    def _get_image_dimensions_px(self, img_path: Path) -> Optional[Tuple[int, int]]:
+        if not img_path or not img_path.exists():
+            return None
+        try:
+            if PILImage:
+                with PILImage.open(img_path) as pil_img:
+                    return (pil_img.width, pil_img.height)
+            img = Image(str(img_path))
+            if img.width and img.height:
+                return (int(img.width), int(img.height))
+        except Exception as exc:
+            logger.warning("No se pudo leer el tamaño del logo %s: %s", img_path, exc)
+        return None
+
+    def _compute_target_size(
+        self,
+        img_path: Path,
+        max_width: int,
+        max_height: int,
+    ) -> Optional[Tuple[int, int]]:
+        dims = self._get_image_dimensions_px(img_path)
+        if not dims:
+            return None
+        img_w, img_h = dims
+        if img_w <= 0 or img_h <= 0:
+            return None
+        width_scale = max_width / float(img_w) if max_width else 1.0
+        height_scale = max_height / float(img_h) if max_height else width_scale
+        scale = min(width_scale, height_scale)
+        return (int(img_w * scale), int(img_h * scale))
+
+    def get_header_metrics(
+        self,
+        ws: Worksheet,
+        title_text: str = "Informe de Actividades",
+    ) -> Dict[str, object]:
+        """Calcula métricas del header para posicionar logos con márgenes."""
+        title_merge = self._find_title_merge(ws, title_text)
+        if title_merge:
+            title_min_row, title_max_row, title_min_col, title_max_col = title_merge
+            header_start = 1
+            header_end = title_max_row
+            max_scan = min(title_max_row + 6, ws.max_row)
+            for r in range(title_max_row + 1, max_scan + 1):
+                has_fill = False
+                for c in range(title_min_col, title_max_col + 1):
+                    cell = ws.cell(row=r, column=c)
+                    if cell.fill and cell.fill.fill_type:
+                        has_fill = True
+                        break
+                if has_fill:
+                    header_end = r
+                else:
+                    break
+        else:
+            header_start = 1
+            header_end = min(3, ws.max_row or 3)
+            title_min_row = header_start
+            title_max_row = header_end
+            title_min_col = 1
+            title_max_col = 1
+
+        header_rows = (header_start, header_end)
+        last_col = self._get_last_header_col(ws, header_rows, title_merge)
+
+        header_height_px = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        for r in range(header_start, header_end + 1):
+            header_height_px += self._row_height_to_pixels(ws.row_dimensions[r].height, default_height)
+
+        header_width_px = 0
+        for c in range(1, last_col + 1):
+            col_letter = get_column_letter(c)
+            header_width_px += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+
+        title_x_start_px = 0
+        title_x_end_px = header_width_px
+        if title_merge:
+            title_x_start_px = 0
+            for c in range(1, title_min_col):
+                col_letter = get_column_letter(c)
+                title_x_start_px += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+            title_x_end_px = title_x_start_px
+            for c in range(title_min_col, title_max_col + 1):
+                col_letter = get_column_letter(c)
+                title_x_end_px += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+
+        if header_width_px > 0:
+            # Cuando el título ocupa casi todo el ancho, usa una zona central segura
+            if title_x_start_px <= header_width_px * 0.1 and title_x_end_px >= header_width_px * 0.9:
+                title_x_start_px = int(round(header_width_px * 0.35))
+                title_x_end_px = int(round(header_width_px * 0.65))
+
+        return {
+            "headerRows": header_rows,
+            "headerHeightPx": header_height_px,
+            "headerWidthPx": header_width_px,
+            "titleXStartPx": title_x_start_px,
+            "titleXEndPx": title_x_end_px,
+            "lastColUsedInHeader": last_col,
+        }
+
+    def place_logo_fixed(
+        self,
+        ws: Worksheet,
+        img_path: Path,
+        cx: int,
+        cy: int,
+        x_emu: int,
+        y_emu: int,
+        header_start_row: int,
+    ) -> None:
+        """Inserta un logo en posición absoluta (EMU) respecto al inicio del header."""
+        if not img_path or not img_path.exists():
+            return
+        if cx <= 0 or cy <= 0:
+            return
+
+        img = Image(str(img_path))
+        col_idx0, row_idx0, col_off, row_off = self.xy_to_anchor(ws, x_emu, y_emu, start_row=header_start_row)
+        marker = AnchorMarker(
+            col=col_idx0,
+            colOff=col_off,
+            row=row_idx0,
+            rowOff=row_off,
+        )
+        ext = XDRPositiveSize2D(int(cx), int(cy))
+        img.anchor = OneCellAnchor(_from=marker, ext=ext)
+        ws.add_image(img)
+
+    def normalize_header_logos(
+        self,
+        ws: Worksheet,
+        bit_logo_path: Optional[Path],
+        nova_logo_path: Optional[Path],
+        *,
+        title_text: str = "Informe de Actividades",
+        bit_max_size: Tuple[int, int] = (150, 52),
+        nova_max_size: Tuple[int, int] = (140, 48),
+        margin_left_px: int = 18,
+        margin_right_px: int = 18,
+        safe_gap_px: int = 12,
+    ) -> None:
+        """Wrapper legacy: usa tamaños fijos (px) y normaliza con EMU."""
+        if not bit_logo_path or not nova_logo_path:
+            return
+        bit_target = self._compute_target_size(bit_logo_path, *bit_max_size)
+        nova_target = self._compute_target_size(nova_logo_path, *nova_max_size)
+        if not bit_target or not nova_target:
+            return
+        emu_per_px = 9525
+        ref_bit = {"cx": int(bit_target[0]) * emu_per_px, "cy": int(bit_target[1]) * emu_per_px}
+        ref_nova = {"cx": int(nova_target[0]) * emu_per_px, "cy": int(nova_target[1]) * emu_per_px}
+        self.normalize_sheet_header_logos(
+            ws,
+            ref_bit,
+            ref_nova,
+            bit_logo_path,
+            nova_logo_path,
+            title_texts=[title_text, "Informe Consolidado de Actividades"],
+        )
+
+    def _position_logo_in_block(
+        self,
+        ws: Worksheet,
+        img_path: Path,
+        header_rows: Tuple[int, int],
+        block_cols: Tuple[int, int],
+        *,
+        max_width: int,
+        max_height: int,
+    ) -> None:
+        if not img_path.exists():
+            return
+        img = Image(str(img_path))
+        if not img.width or not img.height:
+            return
+
+        r1, r2 = header_rows
+        c1, c2 = block_cols
+
+        header_height_px = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        for r in range(r1, r2 + 1):
+            header_height_px += self._row_height_to_pixels(ws.row_dimensions[r].height, default_height)
+
+        block_width_px = 0
+        for c in range(c1, c2 + 1):
+            col_letter = get_column_letter(c)
+            block_width_px += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+
+        # Escalado anti-recorte
+        scale = min(
+            block_width_px / float(img.width) if block_width_px else 1.0,
+            header_height_px / float(img.height) if header_height_px else 1.0,
+            max_width / float(img.width),
+            max_height / float(img.height),
+        )
+        scale = min(scale, 1.0)
+        img.width = int(img.width * scale)
+        img.height = int(img.height * scale)
+
+        x_off_px = max(int(round((block_width_px - img.width) / 2)), 0)
+        y_off_px = max(int(round((header_height_px - img.height) / 2)), 0)
+
+        emu_per_px = 9525
+        marker = AnchorMarker(col=c1 - 1, colOff=x_off_px * emu_per_px, row=r1 - 1, rowOff=y_off_px * emu_per_px)
+        ext = XDRPositiveSize2D(img.width * emu_per_px, img.height * emu_per_px)
+        img.anchor = OneCellAnchor(_from=marker, ext=ext)
+        ws.add_image(img)
+
+    def get_header_layout(
+        self,
+        ws: Worksheet,
+        title_text: str = "Informe de Actividades",
+    ) -> Dict[str, object]:
+        """Detecta layout del header y calcula cajas para logos."""
+        title_merge = self._find_title_merge(ws, title_text)
+        if title_merge:
+            header_rows = (1, title_merge[1])
+        else:
+            header_rows = (1, min(3, ws.max_row or 3))
+
+        last_col = self._get_last_header_col(ws, header_rows, title_merge)
+
+        def _box_width_px(c1: int, c2: int) -> int:
+            width = 0
+            for c in range(c1, c2 + 1):
+                col_letter = get_column_letter(c)
+                width += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+            return width
+
+        header_height_px = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        for r in range(header_rows[0], header_rows[1] + 1):
+            header_height_px += self._row_height_to_pixels(ws.row_dimensions[r].height, default_height)
+
+        if title_merge:
+            left_box = (1, max(title_merge[2] - 1, 1))
+            right_box = (min(title_merge[3] + 1, last_col), last_col)
+        else:
+            left_box = (1, max(1, min(3, last_col)))
+            right_box = (max(1, last_col - 1), last_col)
+
+        min_box_px = 60
+        left_w = _box_width_px(left_box[0], left_box[1]) if left_box[1] >= left_box[0] else 0
+        right_w = _box_width_px(right_box[0], right_box[1]) if right_box[1] >= right_box[0] else 0
+
+        if left_w < min_box_px or right_w < min_box_px:
+            # Fallback por porcentaje
+            left_end = max(1, int(round(last_col * 0.2)))
+            right_start = max(left_end + 1, int(round(last_col * 0.8)))
+            left_box = (1, left_end)
+            right_box = (right_start, last_col)
+
+        return {
+            "header_rows": header_rows,
+            "title_merge_range": title_merge,
+            "lastColUsedInHeader": last_col,
+            "leftLogoBox": left_box,
+            "rightLogoBox": right_box,
+            "headerHeightPx": header_height_px,
+        }
+
+    def place_logo_in_box(
+        self,
+        ws: Worksheet,
+        img_path: Path,
+        box: Tuple[int, int],
+        header_rows: Tuple[int, int],
+        max_scale: float = 1.0,
+    ) -> None:
+        """Posiciona logo dentro de un box con escalado y offsets reales."""
+        if not img_path.exists():
+            return
+
+        if PILImage:
+            with PILImage.open(img_path) as pil_img:
+                img_w = pil_img.width
+                img_h = pil_img.height
+        else:
+            img = Image(str(img_path))
+            img_w = img.width
+            img_h = img.height
+
+        if not img_w or not img_h:
+            return
+
+        r1, r2 = header_rows
+        c1, c2 = box
+
+        header_height_px = 0
+        default_height = getattr(ws.sheet_format, "defaultRowHeight", 15.0)
+        for r in range(r1, r2 + 1):
+            header_height_px += self._row_height_to_pixels(ws.row_dimensions[r].height, default_height)
+
+        box_width_px = 0
+        for c in range(c1, c2 + 1):
+            col_letter = get_column_letter(c)
+            box_width_px += self._column_width_to_pixels(ws.column_dimensions[col_letter].width)
+
+        if box_width_px == 0 or header_height_px == 0:
+            return
+
+        scale = min(box_width_px / float(img_w), header_height_px / float(img_h)) * 0.92
+        if max_scale is not None:
+            scale = min(scale, max_scale)
+
+        new_w = int(img_w * scale)
+        new_h = int(img_h * scale)
+
+        x_off_px = max(int(round((box_width_px - new_w) / 2)), 0)
+        y_off_px = max(int(round((header_height_px - new_h) / 2)), 0)
+
+        img = Image(str(img_path))
+        img.width = new_w
+        img.height = new_h
+
+        emu_per_px = 9525
+        marker = AnchorMarker(col=c1 - 1, colOff=x_off_px * emu_per_px, row=r1 - 1, rowOff=y_off_px * emu_per_px)
+        ext = XDRPositiveSize2D(new_w * emu_per_px, new_h * emu_per_px)
+        img.anchor = OneCellAnchor(_from=marker, ext=ext)
+        ws.add_image(img)
+
+    def normalize_header(
+        self,
+        ws: Worksheet,
+        bit_logo_path: Optional[Path],
+        nova_logo_path: Optional[Path],
+        title_text: str = "Informe de Actividades",
+    ) -> None:
+        """Normaliza logos BIT/NOVA con layout detectado del header."""
+        layout = self.get_header_layout(ws, title_text=title_text)
+        header_rows = layout["header_rows"]
+        left_box = layout["leftLogoBox"]
+        right_box = layout["rightLogoBox"]
+        last_col = layout["lastColUsedInHeader"]
+
+        # Eliminar logos existentes en header (izq/der)
+        kept_images = []
+        for img in getattr(ws, "_images", []):
+            anchor = img.anchor
+            img_col = None
+            img_row = None
+            if isinstance(anchor, str):
+                try:
+                    col_letter, row = re.match(r"([A-Z]+)(\d+)", anchor).groups()
+                    img_col = column_index_from_string(col_letter)
+                    img_row = int(row)
+                except Exception:
+                    img_col = None
+            elif hasattr(anchor, "_from"):
+                img_col = anchor._from.col + 1
+                img_row = anchor._from.row + 1
+
+            if img_col is not None and img_row is not None:
+                if header_rows[0] <= img_row <= header_rows[1]:
+                    if img_col <= int(last_col * 0.3) or img_col >= int(last_col * 0.7):
+                        continue
+            kept_images.append(img)
+        ws._images = kept_images
+
+        if bit_logo_path and bit_logo_path.exists():
+            self.place_logo_in_box(ws, bit_logo_path, left_box, header_rows, max_scale=1.0)
+        if nova_logo_path and nova_logo_path.exists():
+            self.place_logo_in_box(ws, nova_logo_path, right_box, header_rows, max_scale=1.0)
 
     def extract_consultant_data(
         self,
@@ -590,6 +1481,27 @@ class TimeSheetConsolidator:
             ws_individual = wb.create_sheet(sheet_name)
             self._create_individual_sheet(ws_individual, metrics)
 
+        # Normalizar logos en header usando referencia del Resumen
+        if self.client_logo_path and self.logo_path:
+            refs = self.extract_logo_reference_from_resumen(wb)
+            if refs:
+                ref_bit, ref_nova = refs
+                for ws in wb.worksheets:
+                    self.normalize_sheet_header_logos(
+                        ws,
+                        ref_bit,
+                        ref_nova,
+                        self.logo_path,
+                        self.client_logo_path,
+                        title_texts=[
+                            "Informe de Actividades",
+                            "Informe Consolidado de Actividades",
+                            "INFORME ACTIVIDADES OUTSOURCING BUSINESS IT",
+                        ],
+                    )
+            else:
+                logger.warning("No se pudo extraer referencia de logos desde Resumen.")
+
         # Guardar en bytes
         from io import BytesIO
 
@@ -643,6 +1555,24 @@ class TimeSheetConsolidator:
         metrics = self.extract_consultant_data(dataframe, metadata)
         self._create_individual_sheet(ws, metrics)
 
+        # Normalizar logos en header usando referencia del propio sheet
+        if self.client_logo_path and self.logo_path:
+            refs = self.extract_logo_reference_from_resumen(wb)
+            if refs:
+                ref_bit, ref_nova = refs
+                self.normalize_sheet_header_logos(
+                    ws,
+                    ref_bit,
+                    ref_nova,
+                    self.logo_path,
+                    self.client_logo_path,
+                    title_texts=[
+                        "Informe de Actividades",
+                        "Informe Consolidado de Actividades",
+                        "INFORME ACTIVIDADES OUTSOURCING BUSINESS IT",
+                    ],
+                )
+
         from io import BytesIO
         buffer = BytesIO()
         wb.save(buffer)
@@ -677,13 +1607,13 @@ class TimeSheetConsolidator:
         # Logo principal Business IT (restaurado al tamaño visual anterior)
         self._add_logo(ws, anchor="A1", max_width=150, max_height=52)
         if self.client_logo_path:
-            # Logo cliente en resumen: fila negra superior, esquina derecha
+            # Logo cliente en resumen
             client_stem = self.client_logo_path.stem.lower()
-            if "baninter" in client_stem:
-                self._add_logo(ws, anchor="L1", logo_path=self.client_logo_path, max_width=110, max_height=32)
-            elif "nova" in client_stem:
-                # NOVA en la misma fila de header negro que BIT
-                self._add_logo(ws, anchor="L1", max_width=105, max_height=30, logo_path=self.client_logo_path)
+            if "nova" in client_stem:
+                # Insercion temporal para obtener el tamano de referencia
+                self._add_logo(ws, anchor=f"{end_col}1", logo_path=self.client_logo_path, max_width=150, max_height=52)
+            elif "baninter" in client_stem:
+                self._add_logo(ws, anchor="L1", logo_path=self.client_logo_path, max_width=150, max_height=52)
             else:
                 self._add_logo(ws, anchor="L1", max_width=105, max_height=30, logo_path=self.client_logo_path)
 
@@ -713,6 +1643,7 @@ class TimeSheetConsolidator:
             for col in range(1, total_columns + 1):
                 ws.cell(row=row, column=col).fill = header_fill
         ws.row_dimensions[3].height = px_to_points(5)
+
 
         # ============================================================
         # INFO DEL CONTRATO (filas 5-9)
@@ -946,20 +1877,30 @@ class TimeSheetConsolidator:
     ) -> None:
         """Hoja individual BANINTER con layout simple tipo plantilla y colores corporativos."""
         dataframe = metrics.dataframe.copy()
+        # Eliminar columnas vacias al final (evita columna extra en el Excel)
+        drop_cols = []
+        for col in list(dataframe.columns):
+            header = str(col).strip()
+            if header == "" or header.startswith("Col_"):
+                series = dataframe[col]
+                if series.isna().all() or series.astype(str).str.strip().eq("").all():
+                    drop_cols.append(col)
+        if drop_cols:
+            dataframe = dataframe.drop(columns=drop_cols)
         metadata = metrics.metadata or {}
 
         def _format_date_only(value: object) -> str:
             if not value:
                 return ""
             if isinstance(value, (date, datetime)):
-                return f"{value.day}/{value.month}/{value.year}"
+                return value.strftime("%d/%m/%Y")
             text = str(value).strip()
             # Evitar mostrar hora cuando llega "2026-01-01 00:00:00"
             if " " in text:
                 text = text.split(" ")[0]
             try:
                 parsed = datetime.fromisoformat(text)
-                return f"{parsed.day}/{parsed.month}/{parsed.year}"
+                return parsed.strftime("%d/%m/%Y")
             except Exception:
                 return text
 
@@ -971,16 +1912,16 @@ class TimeSheetConsolidator:
                 first = str(row_values[0]).lower()
                 if any(label in first for label in labels):
                     raw_text = str(row_values[-1]).strip()
-                    return raw_text.split(" ")[0] if raw_text else ""
+                    return raw_text if raw_text else ""
             return ""
 
         report_date_raw = _raw_from_metadata(["fecha del informe", "fecha informe"])
         period_raw = _raw_from_metadata(["periodo informe", "periodo"])
 
-        report_date = report_date_raw or _format_date_only(metadata.get("report_date"))
+        report_date = _format_date_only(report_date_raw or metadata.get("report_date"))
         period_start = _format_date_only(metadata.get("period_start"))
         period_end = _format_date_only(metadata.get("period_end"))
-        if not period_raw and period_start and period_end:
+        if (not period_raw or ("-" not in period_raw and "–" not in period_raw)) and period_start and period_end:
             period_raw = f"{period_start} - {period_end}"
 
         client_name = (
@@ -998,18 +1939,33 @@ class TimeSheetConsolidator:
         self._add_logo(ws, anchor="A1", max_width=235, max_height=78)
         if self.client_logo_path:
             client_anchor_col = get_column_letter(max(6, total_cols - 1))
-            self._add_logo(
-                ws,
-                anchor=f"{client_anchor_col}2",
-                logo_path=self.client_logo_path,
-                max_width=100 if "baninter" in self.client_logo_path.stem.lower() else 95,
-                max_height=30 if "baninter" in self.client_logo_path.stem.lower() else 28,
-            )
+            if "baninter" in self.client_logo_path.stem.lower():
+                for col_idx in range(1, total_cols + 1):
+                    header_value = dataframe.columns[col_idx - 1]
+                    header_text = str(header_value).strip().lower()
+                    if "fase/ciclo" in header_text or "tipo actividad" in header_text:
+                        client_anchor_col = get_column_letter(col_idx)
+                        break
+                self._add_logo(
+                    ws,
+                    anchor=f"{client_anchor_col}1",
+                    logo_path=self.client_logo_path,
+                    max_width=175,
+                    max_height=60,
+                )
+            else:
+                self._add_logo(
+                    ws,
+                    anchor=f"{client_anchor_col}1",
+                    logo_path=self.client_logo_path,
+                    max_width=95,
+                    max_height=28,
+                )
         title_start_col = 2 if total_cols >= 2 else 1
         title_start_letter = get_column_letter(title_start_col)
         ws.merge_cells(f"{title_start_letter}1:{end_col_letter}1")
         title_cell = ws.cell(row=1, column=title_start_col, value="INFORME ACTIVIDADES OUTSOURCING BUSINESS IT")
-        title_cell.font = TITLE_FONT
+        title_cell.font = Font(name="Calibri", size=18, bold=True, color=COLOR_LIME)
         title_cell.alignment = CENTER_ALIGNMENT
         title_cell.fill = TABLE_HEADER_FILL
 
@@ -1133,7 +2089,7 @@ class TimeSheetConsolidator:
                 if any(label in first for label in labels):
                     raw_text = str(row_values[-1]).strip()
                     # Si viene con hora, conservar solo la fecha
-                    return raw_text.split(" ")[0]
+                    return raw_text
             return ""
 
         report_date_raw = _raw_from_metadata(["fecha del informe", "fecha informe"])
@@ -1144,14 +2100,23 @@ class TimeSheetConsolidator:
         end_col_letter_nova = get_column_letter(total_cols_nova)
         self._add_logo(ws, anchor="A1", max_width=200, max_height=66)
         if self.client_logo_path:
-            client_anchor_col = get_column_letter(max(6, total_cols_nova - 1))
-            self._add_logo(
-                ws,
-                anchor=f"{client_anchor_col}2",
-                logo_path=self.client_logo_path,
-                max_width=100 if "baninter" in self.client_logo_path.stem.lower() else 95,
-                max_height=30 if "baninter" in self.client_logo_path.stem.lower() else 28,
-            )
+            if not "nova" in self.client_logo_path.stem.lower():
+                client_anchor_col = get_column_letter(max(6, total_cols_nova - 1))
+                self._add_logo(
+                    ws,
+                    anchor=f"{client_anchor_col}1",
+                    logo_path=self.client_logo_path,
+                    max_width=140 if ("baninter" in self.client_logo_path.stem.lower()) else 95,
+                    max_height=48 if ("baninter" in self.client_logo_path.stem.lower()) else 28,
+                )
+            else:
+                self._add_logo(
+                    ws,
+                    anchor=f"{end_col_letter_nova}1",
+                    logo_path=self.client_logo_path,
+                    max_width=140,
+                    max_height=48,
+                )
         title_start_col = 2 if total_cols_nova >= 2 else 1
         title_start_letter = get_column_letter(title_start_col)
         ws.merge_cells(f"{title_start_letter}1:{end_col_letter_nova}1")
@@ -1163,9 +2128,10 @@ class TimeSheetConsolidator:
             ws.cell(row=1, column=c_idx).fill = TABLE_HEADER_FILL
         ws.row_dimensions[1].height = 56
 
+
         ws["A2"] = "Fecha del Informe:"
         if report_date_raw:
-            ws["B2"] = report_date_raw
+            ws["B2"] = _format_date(report_date_raw)
         elif report_date:
             ws["B2"] = _format_date(report_date)
         elif period_end:
@@ -1175,12 +2141,12 @@ class TimeSheetConsolidator:
         ws["A3"] = "Tema del Informe:"
         ws["B3"] = "Informe de Actividades"
         ws["A4"] = "Periodo Informe:"
-        if periodo_raw:
+        if periodo_raw and ("-" in periodo_raw or "–" in periodo_raw):
             ws["B4"] = periodo_raw
         elif period_start and period_end:
             ws["B4"] = f"{_format_date(period_start)} - {_format_date(period_end)}"
         else:
-            ws["B4"] = ""
+            ws["B4"] = periodo_raw or ""
         ws["A5"] = "Empresa:"
         ws["B5"] = company or ""
         ws["A6"] = "Consultor:"
@@ -1287,40 +2253,215 @@ class TimeSheetConsolidator:
             ws.column_dimensions[column].width = adjusted_width
 
         # ---------------------------------------------------------
-        # Footer original (contenido adicional debajo de la tabla)
+        # Fila TOTAL (solo NOVA/CD): sumar horas numericas
         # ---------------------------------------------------------
+        total_row = None
+        hour_col_idx = None
+        for col_idx in range(1, ws.max_column + 1):
+            header_value = ws.cell(row=9, column=col_idx).value
+            if header_value and "hora" in str(header_value).lower():
+                hour_col_idx = col_idx
+                break
+
+        if hour_col_idx is not None:
+            total_row = 9 + len(metrics.dataframe) + 1
+            ws.cell(row=total_row, column=1, value="TOTAL")
+            ws.cell(row=total_row, column=1).font = Font(name="Calibri", size=11, bold=True)
+
+            start_cell = f"{get_column_letter(hour_col_idx)}10"
+            end_cell = f"{get_column_letter(hour_col_idx)}{total_row - 1}"
+            total_cell = ws.cell(row=total_row, column=hour_col_idx)
+            total_cell.value = f"=SUM({start_cell}:{end_cell})"
+            total_cell.number_format = "0.0"
+            total_cell.font = Font(name="Calibri", size=11, bold=True)
+            total_cell.alignment = RIGHT_ALIGNMENT
+
+        # ---------------------------------------------------------
+        # Footer (formato Alfredo Aguirre)
+        # ---------------------------------------------------------
+        table_header_row = 9
+        first_detail_row = table_header_row + 1
+        last_detail_row = table_header_row + len(metrics.dataframe)
+        last_data_row = total_row or last_detail_row
+
         footer_block = (metrics.metadata or {}).get("footer_block")
-        if footer_block:
-            # Calcular dónde termina la tabla NUEVA
-            # Header está en fila 9, datos desde fila 10
-            table_header_row = 9
-            last_data_row = table_header_row + len(metrics.dataframe)
-            
-            # Obtener información del footer de la hoja ORIGINAL
+        footer_format = self._detect_footer_format(footer_block)
+
+        if footer_format == "simple" and footer_block:
+            self._apply_footer_block(ws, footer_block, last_data_row)
+        else:
+            start_row = max(last_data_row + 2, 41)
+            self.buildFooter(
+                ws=ws,
+                startRow=start_row,
+                resourceName=metrics.nombre,
+                approverName="Wilmer Jaramillo",
+                approverTitle="Subgerente Regional de Tecnología",
+                sharepointPath=r"\\NOVA\\Tecnología - Documentos\\IT\\Desarrollo\\Documentación",
+                firstDetailRow=first_detail_row,
+                lastDetailRow=last_detail_row,
+            )
+
+    def buildFooter(
+        self,
+        ws: Worksheet,
+        startRow: int,
+        resourceName: str,
+        approverName: str,
+        approverTitle: str,
+        sharepointPath: str,
+        firstDetailRow: int,
+        lastDetailRow: int,
+    ) -> None:
+        """Construye el pie con formato Alfredo Aguirre."""
+        header_row = max(1, firstDetailRow - 1)
+        tipo_col = None
+        horas_col = None
+        for col_idx in range(1, ws.max_column + 1):
+            header_value = ws.cell(row=header_row, column=col_idx).value
+            if not header_value:
+                continue
+            header_text = str(header_value).strip().lower()
+            if "tipo hora" in header_text:
+                tipo_col = col_idx
+            elif "horas" in header_text or header_text == "hora":
+                if "tipo" not in header_text:
+                    horas_col = col_idx
+
+        tipo_letter = get_column_letter(tipo_col) if tipo_col else None
+        horas_letter = get_column_letter(horas_col) if horas_col else None
+
+        def _sumif(tipo: str) -> str:
+            if not tipo_letter or not horas_letter:
+                return ""
+            tipo_range = f"{tipo_letter}{firstDetailRow}:{tipo_letter}{lastDetailRow}"
+            horas_range = f"{horas_letter}{firstDetailRow}:{horas_letter}{lastDetailRow}"
+            return f'=SUMIF({tipo_range},"{tipo}",{horas_range})'
+
+        bold_font = Font(name="Calibri", size=10, bold=True, color=COLOR_BLACK)
+        normal_font = Font(name="Calibri", size=10, bold=False, color=COLOR_BLACK)
+        center_wrap = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        gray_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+
+        r_total_1 = startRow
+        r_total_2 = startRow + 1
+        r_total_3 = startRow + 2
+        r_legend = startRow + 4
+        r_repo = startRow + 6
+        r_sig_header = startRow + 8
+        r_sig_space = startRow + 9
+        r_sig_name = startRow + 10
+        r_sig_title = startRow + 11
+
+        ws.merge_cells(f"H{r_total_1}:K{r_total_1}")
+        ws.merge_cells(f"H{r_total_2}:K{r_total_2}")
+        ws.merge_cells(f"H{r_total_3}:K{r_total_3}")
+
+        ws[f"H{r_total_1}"].value = "Total Horas Normales"
+        ws[f"H{r_total_2}"].value = "Total Horas Extras entre semana"
+        ws[f"H{r_total_3}"].value = "Total Horas Extras fin de semana o feriado"
+
+        ws[f"L{r_total_1}"].value = _sumif("HN")
+        ws[f"L{r_total_2}"].value = _sumif("HS")
+        ws[f"L{r_total_3}"].value = _sumif("HF")
+
+        for r in (r_total_1, r_total_2, r_total_3):
+            ws[f"H{r}"].font = bold_font
+            ws[f"H{r}"].alignment = left_wrap
+            ws[f"L{r}"].font = bold_font
+            ws[f"L{r}"].alignment = center_wrap
+
+        ws.merge_cells(f"A{r_legend}:L{r_legend}")
+        ws[f"A{r_legend}"].value = (
+            "Tipo Hora - HN: hora normal / HS: hora extra entre semana / "
+            "HF: hora extra fin de semana o feriado"
+        )
+        ws[f"A{r_legend}"].font = bold_font
+        ws[f"A{r_legend}"].alignment = center_wrap
+        ws.row_dimensions[r_legend].height = 13
+
+        ws.merge_cells(f"A{r_repo}:L{r_repo}")
+        ws[f"A{r_repo}"].value = (
+            "Repositorio Base Sharepoint de DocumentaciónEntregada:\n"
+            f"{sharepointPath}"
+        )
+        ws[f"A{r_repo}"].font = bold_font
+        ws[f"A{r_repo}"].alignment = center_wrap
+        ws.row_dimensions[r_repo].height = 26
+
+        ws.merge_cells(f"A{r_sig_header}:F{r_sig_header}")
+        ws.merge_cells(f"G{r_sig_header}:L{r_sig_header}")
+        ws[f"A{r_sig_header}"].value = "Elaborado por:"
+        ws[f"G{r_sig_header}"].value = "Aprobado por:"
+        for cell in (ws[f"A{r_sig_header}"], ws[f"G{r_sig_header}"]):
+            cell.font = bold_font
+            cell.alignment = center_wrap
+            cell.fill = gray_fill
+
+        ws.merge_cells(f"A{r_sig_space}:F{r_sig_space}")
+        ws.merge_cells(f"G{r_sig_space}:L{r_sig_space}")
+        ws.row_dimensions[r_sig_space].height = 49.5
+
+        ws.merge_cells(f"A{r_sig_name}:F{r_sig_name}")
+        ws.merge_cells(f"G{r_sig_name}:L{r_sig_name}")
+        ws[f"A{r_sig_name}"].value = resourceName
+        ws[f"G{r_sig_name}"].value = approverName
+        ws[f"A{r_sig_name}"].font = normal_font
+        ws[f"G{r_sig_name}"].font = normal_font
+        ws[f"A{r_sig_name}"].alignment = center_wrap
+        ws[f"G{r_sig_name}"].alignment = center_wrap
+
+        ws.merge_cells(f"A{r_sig_title}:F{r_sig_title}")
+        ws.merge_cells(f"G{r_sig_title}:L{r_sig_title}")
+        ws[f"A{r_sig_title}"].value = "Cargo Recurso"
+        ws[f"G{r_sig_title}"].value = approverTitle
+        ws[f"A{r_sig_title}"].font = normal_font
+        ws[f"G{r_sig_title}"].font = normal_font
+        ws[f"A{r_sig_title}"].alignment = center_wrap
+        ws[f"G{r_sig_title}"].alignment = center_wrap
+
+        for r in range(r_total_1, r_sig_title + 1):
+            for c in range(1, 13):
+                ws.cell(row=r, column=c).border = THIN_BORDER
+
+    @staticmethod
+    def _detect_footer_format(footer_block: Optional[Dict[str, object]]) -> str:
+        """Detecta el formato de footer basado en textos del archivo original."""
+        if not footer_block:
+            return "alfredo"
+        cells = footer_block.get("cells") or []
+        texts = []
+        for cell in cells:
+            value = cell.get("value")
+            if value is None:
+                continue
+            texts.append(str(value).strip().lower())
+        joined = " | ".join(texts)
+        if "total horas normales" in joined or "tipo hora" in joined or "repositorio base sharepoint" in joined:
+            return "alfredo"
+        if "elaborado por" in joined and "aprobado por" in joined:
+            return "simple"
+        return "alfredo"
+
+    @staticmethod
+    def _apply_footer_block(
+        ws: Worksheet,
+        footer_block: Dict[str, object],
+        last_data_row: int,
+    ) -> None:
+        """Aplica el footer original capturado desde el Excel fuente."""
+        try:
             original_data_end = int(footer_block.get("data_end_row", 0))
             original_footer_start = int(footer_block.get("start_row", original_data_end + 1))
             original_footer_end = int(footer_block.get("max_row", original_footer_start))
-            
-            # En la nueva hoja: el footer debe empezar 2 filas después del último dato
             new_footer_start = last_data_row + 2
-            
-            # El offset es la diferencia entre donde comienza el footer nuevo y donde comenzaba en el original
             offset = new_footer_start - original_footer_start
-            
-            logger.debug(
-                f"Footer: última_fila_original={original_data_end}, "
-                f"footer_original={original_footer_start}-{original_footer_end}, "
-                f"última_fila_nueva={last_data_row}, "
-                f"footer_nuevo_inicia={new_footer_start}, "
-                f"offset={offset}"
-            )
-            
-            # Aplicar alturas de filas del footer
+
             for original_row, height in (footer_block.get("row_heights") or {}).items():
                 new_row = original_row + offset
                 ws.row_dimensions[new_row].height = height
-            
-            # Aplicar celdas del footer
+
             for cell_info in footer_block.get("cells", []):
                 new_row = cell_info["row"] + offset
                 col = cell_info["col"]
@@ -1330,8 +2471,7 @@ class TimeSheetConsolidator:
                 cell.border = cell_info.get("border")
                 cell.alignment = cell_info.get("alignment")
                 cell.number_format = cell_info.get("number_format") or cell.number_format
-            
-            # Aplicar merged cells del footer
+
             for min_row, min_col, max_row, max_col in footer_block.get("merges", []):
                 try:
                     ws.merge_cells(
@@ -1341,7 +2481,9 @@ class TimeSheetConsolidator:
                         end_column=max_col,
                     )
                 except Exception as merge_exc:
-                    logger.warning(f"No se pudo mergear footer cells: {merge_exc}")
+                    logger.warning("No se pudo mergear footer cells: %s", merge_exc)
+        except Exception as exc:
+            logger.warning("No se pudo aplicar footer original: %s", exc)
     def _sanitize_sheet_name(self, name: str) -> str:
         """
         Sanitiza el nombre de una hoja de Excel.

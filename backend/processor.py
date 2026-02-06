@@ -20,10 +20,12 @@ from backend.excel_parser import ParsedSheet
 from backend.llm_corrector import CorrectionResult, LLMCorrector
 from backend.role_validator import RoleActivityValidator
 from backend.profile_validations import run_profile_validations
+from backend.baninter_processor import prepare_baninter_dataframe
 from backend.validators import (
     ValidationIssue,
     run_all_validations,
     validate_mapping,
+    _coerce_hours_series,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,6 +134,15 @@ class TimeSheetProcessor:
         except Exception as exc:
             logger.warning("No se pudo cargar la taxonomía de roles: %s", exc)
             return None
+
+    @staticmethod
+    def _is_baninter_profile(client_profile_id: Optional[str], metadata: Dict[str, object]) -> bool:
+        if client_profile_id == "cliente_talent":
+            return True
+        company = str(metadata.get("company", "") or "").lower()
+        if "baninter" in company or "banco internacional" in company:
+            return True
+        return False
 
     def _analyze_role(
         self,
@@ -301,6 +312,172 @@ class TimeSheetProcessor:
             quality_score=quality_score,
         )
 
+    def _group_hours_debug_df(
+        self,
+        df: pd.DataFrame,
+        *,
+        mapping: ColumnMapping,
+        row_numbers: Sequence[int],
+    ) -> pd.DataFrame:
+        """Agrupa horas por fecha con detalle de filas y valores."""
+        if df.empty or mapping.date not in df.columns or mapping.hours not in df.columns:
+            return pd.DataFrame()
+
+        parsed_dates = pd.to_datetime(df[mapping.date], errors="coerce", dayfirst=True)
+        hours_raw = df[mapping.hours]
+        hours_num = _coerce_hours_series(hours_raw)
+        # Alinear longitudes defensivamente
+        safe_len = min(len(df.index), len(row_numbers))
+        if safe_len == 0:
+            return pd.DataFrame()
+        df = df.iloc[:safe_len].copy()
+        row_numbers_series = pd.Series(list(row_numbers)[:safe_len], index=df.index)
+
+        work = pd.DataFrame(
+            {
+                "Fecha": parsed_dates.dt.date,
+                "Horas_Raw": hours_raw,
+                "Horas_Num": hours_num,
+                "Fila_Excel": row_numbers_series,
+            }
+        ).dropna(subset=["Fecha"], how="any")
+
+        if work.empty:
+            return pd.DataFrame()
+
+        def _join_series(series: pd.Series) -> str:
+            return " | ".join(str(x) for x in series.tolist())
+
+        grouped = (
+            work.groupby("Fecha")
+            .agg(
+                Filas=("Horas_Num", "size"),
+                Horas_Sumadas=("Horas_Num", "sum"),
+                Horas_Invalidas=("Horas_Num", lambda s: int(s.isna().sum())),
+                Horas_Raw=("Horas_Raw", _join_series),
+                Filas_Excel=("Fila_Excel", _join_series),
+            )
+            .reset_index()
+        )
+        return grouped
+
+    @staticmethod
+    def _merge_hours_debug(
+        raw_debug: pd.DataFrame,
+        clean_debug: pd.DataFrame,
+        *,
+        expected_hours: float,
+    ) -> pd.DataFrame:
+        if raw_debug.empty and clean_debug.empty:
+            return pd.DataFrame()
+
+        raw = raw_debug.rename(
+            columns={
+                "Filas": "Filas_Raw",
+                "Horas_Sumadas": "Horas_Sumadas_Raw",
+                "Horas_Invalidas": "Horas_Invalidas_Raw",
+                "Horas_Raw": "Horas_Raw_Raw",
+                "Filas_Excel": "Filas_Excel_Raw",
+            }
+        )
+        clean = clean_debug.rename(
+            columns={
+                "Filas": "Filas_Clean",
+                "Horas_Sumadas": "Horas_Sumadas_Clean",
+                "Horas_Invalidas": "Horas_Invalidas_Clean",
+                "Horas_Raw": "Horas_Raw_Clean",
+                "Filas_Excel": "Filas_Excel_Clean",
+            }
+        )
+
+        merged = raw.merge(clean, on="Fecha", how="outer").sort_values("Fecha")
+        merged["Horas_Esperadas"] = expected_hours
+        merged["Diferencia_Clean"] = merged["Horas_Sumadas_Clean"] - expected_hours
+        return merged
+
+    def _build_hours_debug_detail(
+        self,
+        *,
+        df: pd.DataFrame,
+        mapping: ColumnMapping,
+        row_numbers: Sequence[int],
+        validation_errors: Sequence[ValidationIssue],
+        stage_label: str,
+    ) -> pd.DataFrame:
+        """Detalle por fila para fechas con horas_incorrectas."""
+        if df.empty or not validation_errors:
+            return pd.DataFrame()
+
+        target_dates = sorted(
+            {
+                err.get("fecha")
+                for err in validation_errors
+                if err.get("tipo_error") == "horas_incorrectas" and err.get("fecha")
+            }
+        )
+        if not target_dates:
+            return pd.DataFrame()
+
+        parsed_dates = pd.to_datetime(df[mapping.date], errors="coerce", dayfirst=True)
+        hours_raw = df[mapping.hours]
+        hours_num = _coerce_hours_series(hours_raw)
+        descriptions = (
+            df[mapping.description]
+            if mapping.description in df.columns
+            else pd.Series(index=df.index, dtype="object")
+        )
+        desc_series = descriptions.astype(str)
+        desc_clean = desc_series.str.strip()
+        empty_tokens = {"", "-", "---"}
+        desc_empty = desc_series.isna() | desc_clean.isin(empty_tokens) | desc_clean.eq("")
+        desc_numeric = desc_clean.str.fullmatch(r"\d+(\.\d+)?", na=False)
+        hours_missing_or_zero = hours_num.isna() | (hours_num == 0)
+
+        non_core_cols = [
+            col
+            for col in df.columns
+            if col not in {mapping.date, mapping.hours, mapping.description}
+        ]
+        non_core_non_empty_count = pd.Series(0, index=df.index)
+        if non_core_cols:
+            for col in non_core_cols:
+                series = df[col]
+                non_empty = (
+                    series.notna()
+                    & series.astype(str).str.strip().ne("")
+                    & ~series.astype(str).str.strip().isin(empty_tokens)
+                )
+                non_core_non_empty_count += non_empty.astype(int)
+
+        footer_like = (
+            hours_missing_or_zero
+            & (desc_empty | desc_numeric)
+            & (non_core_non_empty_count <= 1)
+        )
+        # Alinear longitudes defensivamente
+        safe_len = min(len(df.index), len(row_numbers))
+        if safe_len == 0:
+            return pd.DataFrame()
+        df = df.iloc[:safe_len].copy()
+        row_numbers_series = pd.Series(list(row_numbers)[:safe_len], index=df.index)
+
+        work = pd.DataFrame(
+            {
+                "Fecha": parsed_dates.dt.strftime("%Y-%m-%d"),
+                "Horas_Raw": hours_raw,
+                "Horas_Num": hours_num,
+                "Descripcion": descriptions,
+                "Fila_Excel": row_numbers_series,
+                "Etapa": stage_label,
+                "Desc_Vacia": desc_empty,
+                "Desc_Numerica": desc_numeric,
+                "Horas_Faltantes": hours_missing_or_zero,
+                "Cols_NoCore": non_core_non_empty_count,
+                "Footer_Like": footer_like,
+            }
+        )
+        return work[work["Fecha"].isin(target_dates)].reset_index(drop=True)
+
     def _create_executive_summary_sheet(
         self,
         workbook,
@@ -433,6 +610,8 @@ class TimeSheetProcessor:
         corrected_df: pd.DataFrame,
         errors_df: pd.DataFrame,
         summary: ProcessorSummary,
+        debug_hours_df: Optional[pd.DataFrame] = None,
+        debug_detail_df: Optional[pd.DataFrame] = None,
     ) -> bytes:
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -440,6 +619,10 @@ class TimeSheetProcessor:
             self._create_executive_summary_sheet(workbook, summary)
             corrected_df.to_excel(writer, index=False, sheet_name="Datos Corregidos")
             errors_df.to_excel(writer, index=False, sheet_name="Reporte de Errores")
+            if debug_hours_df is not None and not debug_hours_df.empty:
+                debug_hours_df.to_excel(writer, index=False, sheet_name="Debug Horas")
+            if debug_detail_df is not None and not debug_detail_df.empty:
+                debug_detail_df.to_excel(writer, index=False, sheet_name="Debug Filas")
         buffer.seek(0)
         return buffer.getvalue()
 
@@ -480,10 +663,43 @@ class TimeSheetProcessor:
         metadata.setdefault("source_name", source_name)
         expected_hours = float(profile_settings.get("horas_esperadas_dia", self.expected_hours))
         row_numbers = self._get_row_numbers(parsed_sheet)
+        raw_row_numbers = list(row_numbers)
+
+        # BANINTER: tolerancia (ffill + columnas opcionales)
+        is_baninter = self._is_baninter_profile(client_profile_id, metadata)
+        baninter_ignore_columns: List[str] = []
+        if is_baninter:
+            df, baninter_report = prepare_baninter_dataframe(df, mapping)
+            metadata["baninter_report"] = baninter_report
+            resolved_mapping = baninter_report.get("resolved_mapping") or {}
+            mapping = ColumnMapping(
+                date=resolved_mapping.get("date", mapping.date),
+                hours=resolved_mapping.get("hours", mapping.hours),
+                description=resolved_mapping.get("description", mapping.description),
+                project=resolved_mapping.get("project", mapping.project),
+            )
+            for optional_col in (resolved_mapping.get("phase"), resolved_mapping.get("id")):
+                if optional_col:
+                    baninter_ignore_columns.append(optional_col)
 
         # Completar fechas agrupadas (celdas vacías) antes de validar el mapeo
         if mapping.date in df.columns:
-            df[mapping.date] = df[mapping.date].ffill()
+            if mapping.description in df.columns:
+                desc_series = df[mapping.description].astype(str).str.strip()
+            else:
+                desc_series = pd.Series(index=df.index, dtype="object")
+
+            if mapping.hours in df.columns:
+                hours_series = pd.to_numeric(df[mapping.hours], errors="coerce")
+            else:
+                hours_series = pd.Series(index=df.index, dtype="float")
+
+            has_payload = (
+                desc_series.notna()
+                & desc_series.ne("")
+                & ~desc_series.isin({"-", "---"})
+            ) | (hours_series.notna() & (hours_series != 0))
+            # df.loc[has_payload, mapping.date] = df.loc[has_payload, mapping.date].ffill()
 
         # Remover filas de totales que se vuelven "válidas" tras ffill (evita falsos positivos)
         if mapping.description in df.columns and mapping.hours in df.columns:
@@ -492,12 +708,21 @@ class TimeSheetProcessor:
             total_mask = desc_series.eq("total") & hours_numeric.notna()
             df = df.loc[~total_mask].copy()
 
-        validate_mapping(
-            df,
-            date_col=mapping.date,
-            hours_col=mapping.hours,
-            description_col=mapping.description,
-        )
+        if is_baninter:
+            validate_mapping(
+                df,
+                date_col=mapping.date,
+                hours_col=mapping.hours,
+                description_col=mapping.description,
+                minimum_valid_ratio=0.0,
+            )
+        else:
+            validate_mapping(
+                df,
+                date_col=mapping.date,
+                hours_col=mapping.hours,
+                description_col=mapping.description,
+            )
 
         df_clean, cleaned_rows, removed_count = detect_and_remove_metadata_rows(
             df,
@@ -532,6 +757,23 @@ class TimeSheetProcessor:
             ),
         }
 
+        # Debug: consolidado por fecha para detectar por qué no suma 8h
+        raw_debug = self._group_hours_debug_df(
+            df,
+            mapping=mapping,
+            row_numbers=raw_row_numbers,
+        )
+        clean_debug = self._group_hours_debug_df(
+            df_clean,
+            mapping=mapping,
+            row_numbers=row_numbers,
+        )
+        debug_hours_df = self._merge_hours_debug(
+            raw_debug,
+            clean_debug,
+            expected_hours=expected_hours,
+        )
+
         validation_errors = run_all_validations(
             df_clean,
             date_column=mapping.date,
@@ -545,6 +787,7 @@ class TimeSheetProcessor:
             duplicate_min_occurrences=duplicate_min_occurrences,
             hours_tolerance_factor=hours_tolerance_factor,
             precomputed=precomputed_validation,
+            missing_fields_ignore_columns=baninter_ignore_columns if is_baninter else None,
         )
         profile_specific = run_profile_validations(
             client_profile_id,
@@ -555,6 +798,22 @@ class TimeSheetProcessor:
         )
         if profile_specific:
             validation_errors.extend(profile_specific)
+
+        # Evitar duplicidad: si la fecha estÃ¡ fuera de periodo, no reportar fin de semana/feriado
+        out_of_period_dates = {
+            err.get("fecha")
+            for err in validation_errors
+            if err.get("tipo_error") == "fecha_fuera_periodo" and err.get("fecha")
+        }
+        if out_of_period_dates:
+            validation_errors = [
+                err
+                for err in validation_errors
+                if not (
+                    err.get("tipo_error") in {"fin_semana", "feriado"}
+                    and err.get("fecha") in out_of_period_dates
+                )
+            ]
 
         if ticket_column:
             validation_errors = self._normalize_ticket_validation_errors(
@@ -603,7 +862,30 @@ class TimeSheetProcessor:
             else pd.DataFrame(columns=list(ValidationIssue.__annotations__.keys()))
         )
         errors_df = self._sort_errors_df(errors_df)
-        workbook_bytes = self._export_workbook(df_clean, errors_df, summary)
+        debug_detail_df = self._build_hours_debug_detail(
+            df=df,
+            mapping=mapping,
+            row_numbers=raw_row_numbers,
+            validation_errors=validation_errors,
+            stage_label="RAW",
+        )
+        debug_detail_clean = self._build_hours_debug_detail(
+            df=df_clean,
+            mapping=mapping,
+            row_numbers=row_numbers,
+            validation_errors=validation_errors,
+            stage_label="CLEAN",
+        )
+        if debug_detail_df is not None and debug_detail_clean is not None:
+            debug_detail_df = pd.concat([debug_detail_df, debug_detail_clean], ignore_index=True)
+
+        workbook_bytes = self._export_workbook(
+            df_clean,
+            errors_df,
+            summary,
+            debug_hours_df=debug_hours_df,
+            debug_detail_df=debug_detail_df,
+        )
         output_filename = self._build_output_filename(source_name)
 
         uploaded_original = None

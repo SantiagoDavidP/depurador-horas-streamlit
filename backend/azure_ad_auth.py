@@ -19,6 +19,13 @@ from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+def _clear_auth_query_params() -> None:
+    """Clear auth-related query params from the URL."""
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
 
 class AzureADAuthenticator:
     """
@@ -251,9 +258,8 @@ def require_authentication() -> Tuple[bool, Optional[Dict]]:
                         st.session_state["auth_token"] = token_result
                         st.session_state["user_info"] = user_info
                         
-                        # Clear query params and rerun
-                        st.query_params.clear()
-                        st.rerun()
+                        # Clear query params (sin rerun para que se refleje la URL)
+                        _clear_auth_query_params()
                     else:
                         st.error("❌ No tienes permisos para acceder a esta aplicación")
                         st.info("Contacta al administrador para solicitar acceso al grupo de seguridad requerido.")
@@ -285,6 +291,9 @@ def require_authentication() -> Tuple[bool, Optional[Dict]]:
         return False, None
     
     # User is authenticated
+    if st.session_state.get("authenticated"):
+        if query_params.get("code") or query_params.get("session_state"):
+            _clear_auth_query_params()
     return True, st.session_state["user_info"]
 
 

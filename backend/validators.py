@@ -128,6 +128,20 @@ def _get_row_number(row_numbers: Optional[Sequence[int]], position: int) -> int:
     return position + 2
 
 
+def _coerce_hours_series(series: pd.Series) -> pd.Series:
+    """Normaliza horas para aceptar formatos como '7,5' o '8h'."""
+    if series is None:
+        return series
+    if series.dtype == object:
+        cleaned = (
+            series.astype(str)
+            .str.replace(",", ".", regex=False)
+            .str.replace(r"[^0-9\.\-]", "", regex=True)
+        )
+        return pd.to_numeric(cleaned, errors="coerce")
+    return pd.to_numeric(series, errors="coerce")
+
+
 @lru_cache(maxsize=10)
 def _get_ec_holidays(year: int) -> frozenset[date]:
     """Obtiene feriados de Ecuador para un año específico (cached y thread-safe)."""
@@ -267,12 +281,11 @@ def validate_daily_hours(
     _ensure_required_columns(df, [date_column, hours_column])
     issues: List[ValidationIssue] = []
 
-    if parsed_dates is None:
-        parsed_dates = pd.to_datetime(
-            df[date_column], errors="coerce", dayfirst=True
-        )
-    if numeric_hours is None:
-        numeric_hours = pd.to_numeric(df[hours_column], errors="coerce")
+    # Recalcular desde el DataFrame para asegurar sumatoria correcta por fecha
+    parsed_dates = pd.to_datetime(
+        df[date_column], errors="coerce", dayfirst=True
+    )
+    numeric_hours = _coerce_hours_series(df[hours_column])
 
     # Vectorizado: detectar horas faltantes o en 0 (misma lógica, mismas filas)
     missing_mask = numeric_hours.isna() | (numeric_hours == 0)
@@ -567,10 +580,17 @@ def validate_duplicate_entries(
 
     descriptions = work_df["_normalized_desc"].unique()
 
+    # 🟢 FIX PERFORMANCE: Limitar comparaciones O(n²) a máximo 30 descripciones
+    # Si hay más, solo comparar las primeras 30 para evitar timeout
+    if len(descriptions) > 30:
+        logger.info("Limitando fuzzy matching a primeras 30 descripciones para evitar timeout")
+        descriptions = descriptions[:30]
+
     for i, desc1 in enumerate(descriptions):
         if not desc1 or len(desc1) < 10:
             continue
-        for desc2 in descriptions[i + 1 :]:
+        # 🟢 FIX: Solo comparar con próximos 10 items en lugar de todos los restantes
+        for desc2 in descriptions[i + 1 : i + 11]:
             if not desc2:
                 continue
             similarity = fuzz.ratio(desc1, desc2)
@@ -930,6 +950,7 @@ def validate_missing_fields(
     *,
     date_column: str,
     hours_column: str,
+    ignore_columns: Optional[Sequence[str]] = None,
     row_numbers: Optional[Sequence[int]] = None,
 ) -> List[ValidationIssue]:
     """
@@ -940,7 +961,11 @@ def validate_missing_fields(
     - Es un string vacío o solo espacios
     
     NO se consideran vacíos: "SN", "N/A", "0", "False", etc.
+    
+    OPTIMIZADO: Usa Pandas vectorizado en lugar de iterar celdas individuales.
     """
+    import math
+    
     issues: List[ValidationIssue] = []
 
     # Columnas a evaluar (excluye fecha/horas y columnas técnicas ocultas)
@@ -956,63 +981,56 @@ def validate_missing_fields(
             return True
         return False
 
+    ignore_set = {col for col in (ignore_columns or [])}
     columns_to_check = [
         col
         for col in df.columns
         if col not in {date_column, hours_column}
+        and col not in ignore_set
         and not _is_hidden_or_technical_column(col)
     ]
     if not columns_to_check:
         return issues
 
-    def _is_empty(value: object) -> bool:
-        """
-        Detecta si una celda está COMPLETAMENTE vacía.
-        - None → vacía
-        - String vacío "" o solo espacios → vacía
-        - NaN/NaT → vacía
-        - Cualquier otro valor (incluido 0, False, "SN", "N/A") → NO vacía
-        """
-        import math
+    # 🟢 OPTIMIZATION: Usar Pandas vectorizado en lugar de .at[] en loops
+    # Detectar celdas vacías por columna
+    for col in columns_to_check:
+        series = df[col]
         
-        # None es vacío
-        if value is None:
-            return True
+        # Vectorized empty detection
+        is_empty_mask = (
+            (series.isna()) |  # None/NaN/NaT
+            ((series.astype(str).str.strip() == "") & (series.notna()))  # Empty strings
+        )
         
-        # NaN/NaT es vacío
-        try:
-            if isinstance(value, (float, int)):
-                if math.isnan(float(value)):
-                    return True
-        except (ValueError, TypeError):
-            pass
+        # Obtener índices donde hay celdas vacías
+        empty_indices = is_empty_mask[is_empty_mask].index.tolist()
         
-        # String vacío o solo espacios es vacío
-        if isinstance(value, str):
-            return value.strip() == ""
+        if not empty_indices:
+            continue
         
-        # Cualquier otro valor (0, False, "SN", "N/A", etc.) NO es vacío
-        return False
-
-    # Revisar TODAS las columnas y TODAS las filas
-    for idx in range(len(df)):
-        row_number = _get_row_number(row_numbers, idx)
-        fecha = _normalize_date_output(df.at[idx, date_column]) if date_column in df.columns else ""
+        # Para estas celdas vacías, agregar issues
+        if date_column in df.columns:
+            fechas = df.loc[empty_indices, date_column].apply(_normalize_date_output)
+        else:
+            fechas = [""] * len(empty_indices)
         
-        for col in columns_to_check:
-            value = df.at[idx, col]
-            if _is_empty(value):
-                issues.append(
-                    ValidationIssue(
-                        fila=row_number,
-                        fecha=fecha,
-                        tipo_error="campo_vacio",
-                        descripcion=f"Campo vacío en columna '{col}'.",
-                        valor_original="",
-                        valor_corregido="",
-                    )
+        for idx, row_idx in enumerate(empty_indices):
+            row_number = _get_row_number(row_numbers, row_idx)
+            fecha = fechas.iloc[idx] if isinstance(fechas, pd.Series) else ""
+            
+            issues.append(
+                ValidationIssue(
+                    fila=row_number,
+                    fecha=fecha,
+                    tipo_error="campo_vacio",
+                    descripcion=f"Campo vacío en columna '{col}'.",
+                    valor_original="",
+                    valor_corregido="",
                 )
+            )
 
+    logger.info("validate_missing_fields: %d campos vacíos detectados", len(issues))
     return issues
 
 
@@ -1045,6 +1063,7 @@ def run_all_validations(
     period_year: Optional[int] = None,
     period_month: Optional[int] = None,
     precomputed: Optional[Dict[str, pd.Series]] = None,
+    missing_fields_ignore_columns: Optional[Sequence[str]] = None,
 ) -> List[ValidationIssue]:
     """
     Ejecuta todas las validaciones disponibles y agrega sus resultados.
@@ -1059,6 +1078,14 @@ def run_all_validations(
     parsed_dates = precomputed.get("parsed_dates")
     numeric_hours = precomputed.get("numeric_hours")
     normalized_descriptions = precomputed.get("normalized_description")
+
+    if numeric_hours is None or numeric_hours.isna().any():
+        numeric_hours = _coerce_hours_series(df[hours_column])
+
+    if parsed_dates is None or getattr(parsed_dates, "isna", None) is None:
+        parsed_dates = pd.to_datetime(
+            df[date_column], errors="coerce", dayfirst=True
+        )
 
     try:
         issues.extend(
@@ -1176,6 +1203,7 @@ def run_all_validations(
                 df,
                 date_column=date_column,
                 hours_column=hours_column,
+                ignore_columns=missing_fields_ignore_columns,
                 row_numbers=row_numbers,
             )
         )

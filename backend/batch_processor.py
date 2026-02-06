@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
@@ -49,63 +51,108 @@ class BatchProcessor:
         files: Sequence[BatchFileRequest],
         *,
         progress_callback: Optional[BatchProgress] = None,
+        max_workers: int = 3,
     ) -> List[BatchFileResult]:
+        """
+        Procesa archivos en paralelo usando ThreadPoolExecutor.
+        
+        Args:
+            files: Archivos a procesar
+            progress_callback: Callback para actualizar progreso
+            max_workers: Número máximo de threads paralelos (default 3)
+        """
         results: List[BatchFileResult] = []
         total = len(files)
-        for index, file_request in enumerate(files, start=1):
-            if progress_callback:
-                progress_callback(index - 1, total, f"Iniciando {file_request.file_name}")
+        
+        # 🟢 PARALLELISM: Usar ThreadPoolExecutor para procesar múltiples archivos simultáneamente
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Mapear futures a file_request para mantener el orden
+            future_to_file = {
+                executor.submit(self._process_single_file, file_request): (index, file_request)
+                for index, file_request in enumerate(files)
+            }
+            
+            # Procesar completados en orden de terminación
+            for future in as_completed(future_to_file):
+                index, file_request = future_to_file[future]
+                try:
+                    result = future.result()
+                    results.append((index, result))
+                    if progress_callback:
+                        progress_callback(len(results), total, f"✅ Procesado {file_request.file_name}")
+                except Exception as exc:
+                    logger.exception("Error procesando archivo %s: %s", file_request.file_name, exc)
+                    results.append(
+                        (index, BatchFileResult(
+                            file_name=file_request.file_name,
+                            success=False,
+                            error=str(exc),
+                            sheet_name=file_request.sheet_name,
+                            client_id=file_request.client_id,
+                        ))
+                    )
+                    if progress_callback:
+                        progress_callback(len(results), total, f"❌ Error en {file_request.file_name}")
+        
+        # Ordenar resultados por índice original para mantener consistencia
+        results.sort(key=lambda x: x[0])
+        return [result for _, result in results]
 
-            parsed_sheet: Optional[ParsedSheet] = None
-            try:
-                parsed_sheet = file_request.parsed_sheet
-                if parsed_sheet is None:
-                    parsed_sheet = load_sheet_with_header(
-                        file_request.file_bytes,
-                        sheet_name=file_request.sheet_name,
-                        header_row=file_request.header_row,
-                        header_keywords=file_request.header_keywords,
-                    )
-                adjusted_mapping = self._align_mapping_with_dataframe(
-                    parsed_sheet, file_request.mapping
+    def _process_single_file(self, file_request: BatchFileRequest) -> BatchFileResult:
+        """Procesa un archivo individual. Separado para usar con ThreadPoolExecutor."""
+        file_start = time.time()
+        parsed_sheet: Optional[ParsedSheet] = None
+        
+        try:
+            t0 = time.time()
+            parsed_sheet = file_request.parsed_sheet
+            if parsed_sheet is None:
+                parsed_sheet = load_sheet_with_header(
+                    file_request.file_bytes,
+                    sheet_name=file_request.sheet_name,
+                    header_row=file_request.header_row,
+                    header_keywords=file_request.header_keywords,
                 )
-                processor_result = self.processor.process_parsed_sheet(
-                    parsed_sheet=parsed_sheet,
-                    mapping=adjusted_mapping,
-                    source_name=file_request.file_name,
-                    **file_request.processor_kwargs,
-                    client_profile_id=file_request.client_id,
-                    client_profile_settings=file_request.profile_settings,
-                )
-                results.append(
-                    BatchFileResult(
-                        file_name=file_request.file_name,
-                        success=True,
-                        result=processor_result,
-                        sheet_name=parsed_sheet.sheet_name,
-                        client_id=file_request.client_id,
-                        header_row=parsed_sheet.header_row,
-                        metadata=getattr(parsed_sheet, "metadata", {}),
-                    )
-                )
-                if progress_callback:
-                    progress_callback(index, total, f"Procesado {file_request.file_name}")
-            except Exception as exc:
-                logger.exception("Error procesando archivo %s: %s", file_request.file_name, exc)
-                results.append(
-                    BatchFileResult(
-                        file_name=file_request.file_name,
-                        success=False,
-                        error=str(exc),
-                        sheet_name=parsed_sheet.sheet_name if parsed_sheet else file_request.sheet_name,
-                        client_id=file_request.client_id,
-                        header_row=parsed_sheet.header_row if parsed_sheet else file_request.header_row,
-                        metadata=getattr(parsed_sheet, "metadata", {}),
-                    )
-                )
-                if progress_callback:
-                    progress_callback(index, total, f"Error en {file_request.file_name}")
-        return results
+            logger.info("⏱️ [%s] Parsed sheet en %.2fs", file_request.file_name, time.time() - t0)
+            
+            t1 = time.time()
+            adjusted_mapping = self._align_mapping_with_dataframe(
+                parsed_sheet, file_request.mapping
+            )
+            logger.info("⏱️ [%s] Aligned mapping en %.2fs", file_request.file_name, time.time() - t1)
+            
+            t2 = time.time()
+            processor_result = self.processor.process_parsed_sheet(
+                parsed_sheet=parsed_sheet,
+                mapping=adjusted_mapping,
+                source_name=file_request.file_name,
+                **file_request.processor_kwargs,
+                client_profile_id=file_request.client_id,
+                client_profile_settings=file_request.profile_settings,
+            )
+            logger.info("⏱️ [%s] Processor completed en %.2fs", file_request.file_name, time.time() - t2)
+            logger.info("⏱️ [%s] ARCHIVO TOTAL en %.2fs", file_request.file_name, time.time() - file_start)
+            
+            return BatchFileResult(
+                file_name=file_request.file_name,
+                success=True,
+                result=processor_result,
+                sheet_name=parsed_sheet.sheet_name,
+                client_id=file_request.client_id,
+                header_row=parsed_sheet.header_row,
+                metadata=getattr(parsed_sheet, "metadata", {}),
+            )
+        except Exception as exc:
+            logger.exception("Error procesando archivo %s: %s", file_request.file_name, exc)
+            return BatchFileResult(
+                file_name=file_request.file_name,
+                success=False,
+                error=str(exc),
+                sheet_name=parsed_sheet.sheet_name if parsed_sheet else file_request.sheet_name,
+                client_id=file_request.client_id,
+                header_row=parsed_sheet.header_row if parsed_sheet else file_request.header_row,
+                metadata=getattr(parsed_sheet, "metadata", {}),
+            )
 
     def _align_mapping_with_dataframe(
         self, parsed_sheet: ParsedSheet, mapping: ColumnMapping
