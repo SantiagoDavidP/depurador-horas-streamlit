@@ -16,6 +16,8 @@ if str(ROOT_DIR) not in sys.path:
 import json
 import logging
 import time
+import zipfile
+from io import BytesIO
 from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
@@ -303,6 +305,34 @@ def render_baninter_report(report: Optional[Dict[str, object]]) -> None:
         if warnings:
             for w in warnings:
                 st.warning(w)
+
+
+def build_baninter_individuals_zip(batch_results: List[BatchFileResult]) -> Optional[bytes]:
+    buffer = BytesIO()
+    written = 0
+    used_names = set()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for idx, res in enumerate(batch_results):
+            if not (res.success and res.result):
+                continue
+            try:
+                business_bytes, business_name = generate_individual_business_it_excel(
+                    res, cliente="BANINTER"
+                )
+                safe_name = business_name or f"BANINTER_{idx + 1}.xlsx"
+                if safe_name in used_names:
+                    stem, ext = safe_name.rsplit(".", 1) if "." in safe_name else (safe_name, "xlsx")
+                    safe_name = f"{stem}_{idx + 1}.{ext}"
+                used_names.add(safe_name)
+                zf.writestr(safe_name, business_bytes)
+                written += 1
+            except Exception as exc:
+                logger.warning("No se pudo generar individual BANINTER para %s: %s", res.file_name, exc)
+                continue
+    if written == 0:
+        return None
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def render_holiday_block(
@@ -729,6 +759,25 @@ def render_batch_consolidated_report(results: List[BatchFileResult]) -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    # BANINTER: no generar consolidado, solo descarga de individuales
+    is_baninter_batch = any(is_baninter_result(r) for r in results)
+    if is_baninter_batch:
+        render_divider()
+        render_section_header("Descarga BANINTER")
+        zip_bytes = build_baninter_individuals_zip(results)
+        if zip_bytes:
+            st.download_button(
+                "DESCARGAR INDIVIDUALES BANINTER (ZIP)",
+                data=zip_bytes,
+                file_name="BANINTER_Individuales_BusinessIT.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
+            )
+        else:
+            st.warning("No se pudieron generar archivos individuales para BANINTER.")
+        return
+
     # ... (El resto de la función para generar el Excel sigue igual) ...
     render_divider()
     render_section_header("Generar consolidado Excel", icon="📄")
@@ -854,15 +903,34 @@ def run_batch_mode(
     uploaded_files: List = batch_state.get("files") or []
 
     if not uploaded_files:
-        render_empty_state(
-            "📁",
-            "Selecciona archivos para comenzar",
-            "Usa la barra lateral para cargar Excel(s)",
+        st.markdown(
+            """
+            <style>
+            .cool-empty {
+              border: 1px dashed rgba(148,163,184,0.6);
+              background: linear-gradient(135deg, rgba(148,163,184,0.12), rgba(15,23,42,0.05));
+              padding: 22px 24px;
+              border-radius: 16px;
+              text-align: left;
+            }
+            .cool-empty h3 {
+              margin: 0 0 8px 0;
+              font-size: 20px;
+            }
+            .cool-empty p {
+              margin: 0;
+              color: #64748b;
+              font-size: 14px;
+            }
+            </style>
+            <div class="cool-empty">
+              <h3>Listo para procesar cuando tu tambien lo estes</h3>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
         if st.session_state.get("show_time_suggestions"):
-            st.caption(
-                "📌 Referencias: Daily ~0.25h · Reuniones 0.25-3h · Dev 1-8h · Review 0.25-2h"
-            )
+            st.caption("Referencias: Daily ~0.25h · Reuniones 0.25-3h · Dev 1-8h · Review 0.25-2h")
         return
 
     # =========================
@@ -1163,7 +1231,11 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
     uploaded_file = st.file_uploader("Excel", type=["xlsx", "xls"], label_visibility="collapsed")
     if not uploaded_file:
         st.session_state["batch_results_accumulator"] = None
-        render_empty_state("📊", "Arrastra tu archivo Excel aquí", "El sistema detectará automáticamente a todos los empleados")
+        render_empty_state(
+            "⚡",
+            "Tu reporte en segundos",
+            "Sube tu Excel y el sistema ordena, valida y consolida automáticamente.",
+        )
         return
 
     source_bytes = uploaded_file.getvalue()
@@ -1557,14 +1629,37 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
     )
 
     # =========================================================
-    # 3. MOSTRAR REPORTE LISTO (AL FINAL)
+    # 3. DESCARGAS FINALES
     # =========================================================
     render_divider()
-    render_section_header("Reporte Listo", icon="🏁")
-    c1, c2 = st.columns(2)
-    c1.metric("⏰ Horas Totales", f"{consolidated.total_horas:.1f} h")
-    c2.metric("👥 Consultores", consolidated.consultores_incluidos)
-    st.download_button("📥 DESCARGAR EXCEL CONSOLIDADO", data=consolidated.workbook_bytes, file_name=consolidated.output_filename, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
+    is_baninter_batch = any(is_baninter_result(r) for r in batch_results)
+    if is_baninter_batch:
+        render_section_header("Descarga BANINTER", icon="📦")
+        zip_bytes = build_baninter_individuals_zip(batch_results)
+        if zip_bytes:
+            st.download_button(
+                "DESCARGAR INDIVIDUALES BANINTER (ZIP)",
+                data=zip_bytes,
+                file_name="BANINTER_Individuales_BusinessIT.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
+            )
+        else:
+            st.warning("No se pudieron generar archivos individuales para BANINTER.")
+    else:
+        render_section_header("Reporte Listo", icon="🏁")
+        c1, c2 = st.columns(2)
+        c1.metric("⏰ Horas Totales", f"{consolidated.total_horas:.1f} h")
+        c2.metric("👥 Consultores", consolidated.consultores_incluidos)
+        st.download_button(
+            "📥 DESCARGAR EXCEL CONSOLIDADO",
+            data=consolidated.workbook_bytes,
+            file_name=consolidated.output_filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True,
+        )
 # =============================================================================
 # APP SHELL (SIDEBAR + ROUTER)
 # =============================================================================

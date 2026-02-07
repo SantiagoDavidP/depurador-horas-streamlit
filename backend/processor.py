@@ -614,6 +614,18 @@ class TimeSheetProcessor:
         debug_hours_df: Optional[pd.DataFrame] = None,
         debug_detail_df: Optional[pd.DataFrame] = None,
     ) -> bytes:
+        def _sanitize_excel_df(df: pd.DataFrame) -> pd.DataFrame:
+            if df is None or df.empty:
+                return df
+            return df.where(pd.notna(df), None)
+
+        corrected_df = _sanitize_excel_df(corrected_df)
+        errors_df = _sanitize_excel_df(errors_df)
+        if debug_hours_df is not None:
+            debug_hours_df = _sanitize_excel_df(debug_hours_df)
+        if debug_detail_df is not None:
+            debug_detail_df = _sanitize_excel_df(debug_detail_df)
+
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             workbook = writer.book
