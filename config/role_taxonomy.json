@@ -1,0 +1,95 @@
+{
+  "Developer": {
+    "keywords_spanish": [
+      "desarrollo",
+      "codificación",
+      "implementación",
+      "programación",
+      "refactorización",
+      "debugging"
+    ],
+    "keywords_english": [
+      "coding",
+      "development",
+      "implementation",
+      "refactoring",
+      "debugging",
+      "merge",
+      "commit",
+      "pull request"
+    ],
+    "technologies": [
+      "Git",
+      "Python",
+      "Java",
+      "JavaScript",
+      "Docker",
+      "API",
+      "REST"
+    ],
+    "common_activities": [
+      "code review",
+      "bug fixing",
+      "feature development",
+      "unit testing"
+    ]
+  },
+  "QA": {
+    "keywords_spanish": [
+      "pruebas",
+      "testing",
+      "certificación",
+      "validación",
+      "qa"
+    ],
+    "keywords_english": [
+      "testing",
+      "test cases",
+      "regression",
+      "smoke test",
+      "integration testing"
+    ],
+    "technologies": [
+      "Selenium",
+      "Postman",
+      "JMeter",
+      "TestRail"
+    ],
+    "common_activities": [
+      "test planning",
+      "defect tracking",
+      "test automation",
+      "quality assurance"
+    ]
+  },
+  "DevOps": {
+    "keywords_spanish": [
+      "despliegue",
+      "infraestructura",
+      "monitoreo",
+      "automatización"
+    ],
+    "keywords_english": [
+      "deployment",
+      "infrastructure",
+      "monitoring",
+      "ci/cd",
+      "pipeline"
+    ],
+    "technologies": [
+      "Docker",
+      "Kubernetes",
+      "Jenkins",
+      "Terraform",
+      "Ansible",
+      "Azure",
+      "AWS"
+    ],
+    "common_activities": [
+      "deployment",
+      "environment setup",
+      "backup",
+      "release management"
+    ]
+  }
+}
