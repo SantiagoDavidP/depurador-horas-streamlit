@@ -574,7 +574,7 @@ def validate_duplicate_entries(
         if desc and len(desc) > 5:
             desc_lower = desc.lower()
             if (
-                any(keyword in desc_lower for keyword in ["daily", "standup", "stand-up", "reuni??n diaria", "reunion diaria"])
+                any(keyword in desc_lower for keyword in ["daily", "standup", "stand-up", "reunión diaria", "reunion diaria"])
                 or len(desc_lower) <= 30
             ):
                 continue
@@ -591,7 +591,7 @@ def validate_duplicate_entries(
                     fila=_get_row_number(row_numbers, filas[0]),
                     fecha=", ".join(fechas[:5]),
                     tipo_error="duplicado_exacto",
-                    descripcion=f"Descripci??n id??ntica repetida {len(filas)} veces. Posible copy-paste.",
+                    descripcion=f"Descripción idéntica repetida {len(filas)} veces. Posible copy-paste.",
                     valor_original=str(df.loc[filas, description_column].iloc[0]),
                     valor_corregido="",
                 )
@@ -639,8 +639,8 @@ def validate_duplicate_entries(
                     desc1_lower = desc1.lower()
                     desc2_lower = desc2.lower()
                     if (
-                        any(keyword in desc1_lower for keyword in ["daily", "standup", "stand-up", "reuni??n diaria"])
-                        and any(keyword in desc2_lower for keyword in ["daily", "standup", "stand-up", "reuni??n diaria"])
+                        any(keyword in desc1_lower for keyword in ["daily", "standup", "stand-up", "reunión diaria"])
+                        and any(keyword in desc2_lower for keyword in ["daily", "standup", "stand-up", "reunión diaria"])
                     ):
                         continue
                     if parsed_dates is None:

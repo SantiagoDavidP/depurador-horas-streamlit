@@ -1206,6 +1206,10 @@ class TimeSheetConsolidator:
         
         # Obtener manager de tarifas
         rates_manager = get_collaborator_rates_manager()
+        collab = rates_manager.find_collaborator(nombre)
+        if collab and collab.nombre_completo:
+            nombre = collab.nombre_completo
+            metadata["employee"] = nombre
 
         # Parsear fechas y horas
         parsed_dates = pd.to_datetime(
@@ -1652,7 +1656,13 @@ class TimeSheetConsolidator:
 
         # 1. Crear hoja de resumen
         ws_resumen = wb.create_sheet("Resumen", 0)
-        self._create_summary_sheet(ws_resumen, periodo, dias_laborables, sorted_metrics)
+        sheet_names = [
+            self._sanitize_sheet_name(f"{idx}. {metrics.nombre}")
+            for idx, metrics in enumerate(sorted_metrics, start=1)
+        ]
+        self._create_summary_sheet(
+            ws_resumen, periodo, dias_laborables, sorted_metrics, sheet_names
+        )
 
         sheet_df_map: Dict[str, pd.DataFrame] = {}
 
@@ -1772,6 +1782,7 @@ class TimeSheetConsolidator:
         periodo: str,
         dias_laborables: int,
         sorted_metrics: List["ConsultorMetrics"],
+        sheet_names: Optional[List[str]] = None,
     ) -> None:
         """Crea la hoja de resumen con diseno corporativo NOVA-TI."""
         # Limpieza de merges previos para evitar conflictos con el nuevo layout
@@ -1919,6 +1930,22 @@ class TimeSheetConsolidator:
                 row_fill = JUNIOR_ROW_FILL
             else:
                 row_fill = None
+            horas_extras_formula = None
+            if sheet_names and idx - 1 < len(sheet_names):
+                sheet_name = sheet_names[idx - 1]
+                last_detail_row = 9 + len(metrics.dataframe)
+                has_hour_col = False
+                for col in list(metrics.dataframe.columns):
+                    header = str(col).strip().lower()
+                    if "hora" in header and "tipo" not in header:
+                        has_hour_col = True
+                        break
+                total_row = (last_detail_row + 1) if has_hour_col else None
+                last_data_row = total_row or last_detail_row
+                start_row = max(last_data_row + 2, 41)
+                r_total_2 = start_row + 1
+                r_total_3 = start_row + 2
+                horas_extras_formula = f"='{sheet_name}'!L{r_total_2}+'{sheet_name}'!L{r_total_3}"
             values = [
                 idx,
                 metrics.nombre,
@@ -1929,7 +1956,7 @@ class TimeSheetConsolidator:
                 None,  # TOTAL (formula)
                 metrics.dias_laborados,
                 None,  # HN (formula)
-                round(metrics.total_horas_extras, 2),
+                horas_extras_formula or round(metrics.total_horas_extras, 2),
                 None,  # VALOR A FACTURAR (formula)
                 round(metrics.valor_hora_extra, 2),
                 None,  # Total Horas Extras (formula)
@@ -2524,23 +2551,18 @@ class TimeSheetConsolidator:
         last_detail_row = table_header_row + len(metrics.dataframe)
         last_data_row = total_row or last_detail_row
 
-        footer_block = (metrics.metadata or {}).get("footer_block")
-        footer_format = self._detect_footer_format(footer_block)
-
-        if footer_format == "simple" and footer_block:
-            self._apply_footer_block(ws, footer_block, last_data_row)
-        else:
-            start_row = max(last_data_row + 2, 41)
-            self.buildFooter(
-                ws=ws,
-                startRow=start_row,
-                resourceName=metrics.nombre,
-                approverName="Wilmer Jaramillo",
-                approverTitle="Subgerente Regional de Tecnología",
-                sharepointPath=r"\\NOVA\\Tecnología - Documentos\\IT\\Desarrollo\\Documentación",
-                firstDetailRow=first_detail_row,
-                lastDetailRow=last_detail_row,
-            )
+        # Footer oficial NOVA (formato Alfredo Aguirre) para todos los consultores
+        start_row = max(last_data_row + 2, 41)
+        self.buildFooter(
+            ws=ws,
+            startRow=start_row,
+            resourceName=metrics.nombre,
+            approverName="Wilmer Jaramillo",
+            approverTitle="Subgerente Regional de Tecnología",
+            sharepointPath=r"\\NOVA\\Tecnología - Documentos\\IT\\Desarrollo\\Documentación",
+            firstDetailRow=first_detail_row,
+            lastDetailRow=last_detail_row,
+        )
 
     def buildFooter(
         self,
@@ -2602,7 +2624,13 @@ class TimeSheetConsolidator:
         ws[f"H{r_total_2}"].value = "Total Horas Extras entre semana"
         ws[f"H{r_total_3}"].value = "Total Horas Extras fin de semana o feriado"
 
-        ws[f"L{r_total_1}"].value = _sumif("HN")
+        if "Resumen" in ws.parent.sheetnames:
+            ws[f"L{r_total_1}"].value = (
+                '=IFERROR(INDEX(Resumen!$I:$I,MATCH($B$6,Resumen!$B:$B,0)),"")'
+            )
+        else:
+            ws[f"L{r_total_1}"].value = _sumif("HN")
+
         ws[f"L{r_total_2}"].value = _sumif("HS")
         ws[f"L{r_total_3}"].value = _sumif("HF")
 

@@ -22,11 +22,13 @@
       "email": "miguel.baquero@company.com"
     },
     "bryan_chalacan": {
-      "nombre_completo": "Bryan Chalacan",
+      "nombre_completo": "Bryan Chalacan Araujo",
       "nombres_alternativos": [
         "Bryan Chalacan",
         "B. Chalacan",
-        "Chalacan Bryan"
+        "Chalacan Bryan",
+        "Bryan Chalacan Araujo",
+        "Edwin Chalacan Araujo"
       ],
       "seniority": "Senior",
       "dias_laborables_mes": 21,
