@@ -1954,8 +1954,8 @@ class TimeSheetConsolidator:
                 round(metrics.valor_tarifa, 2),
                 None,  # VALOR DÍA (formula)
                 None,  # TOTAL (formula)
-                metrics.dias_laborados,
-                None,  # HN (formula)
+                None,  # DIAS LABORADOS REALES (formula desde HN)
+                round(metrics.total_horas_normales, 2),  # HN (valor)
                 horas_extras_formula or round(metrics.total_horas_extras, 2),
                 None,  # VALOR A FACTURAR (formula)
                 round(metrics.valor_hora_extra, 2),
@@ -1989,8 +1989,8 @@ class TimeSheetConsolidator:
                     cell.value = f"=E{row}/D{row}"
                 elif col_idx == 7:  # TOTAL = DIAS LABORADOS (col 4) * VALOR DÍA
                     cell.value = f"=D{row}*F{row}"
-                elif col_idx == 9:  # HN = DIAS LABORADOS (col 8) * 8
-                    cell.value = f"=H{row}*8"
+                elif col_idx == 8:  # DIAS LABORADOS = HN (col 9) / 8
+                    cell.value = f"=I{row}/8"
                 elif col_idx == 11:  # VALOR A FACTURAR = DIAS LABORADOS (col 8) * VALOR DÍA
                     cell.value = f"=H{row}*F{row}"
                 elif col_idx == 13:  # Total Horas Extras = Valor Horas Extras * Horas Extras
@@ -2025,7 +2025,7 @@ class TimeSheetConsolidator:
             5: round(sum(m.valor_tarifa for m in self.consultores_metrics), 2),
             6: '',
             7: f"=SUM(G{header_row + 1}:G{total_row - 1})",
-            8: sum(m.dias_laborados for m in self.consultores_metrics),
+            8: f"=SUM(H{header_row + 1}:H{total_row - 1})",
             9: f"=SUM(I{header_row + 1}:I{total_row - 1})",
             10: f"=SUM(J{header_row + 1}:J{total_row - 1})",
             11: f"=SUM(K{header_row + 1}:K{total_row - 1})",
