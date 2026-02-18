@@ -1930,6 +1930,7 @@ class TimeSheetConsolidator:
                 row_fill = JUNIOR_ROW_FILL
             else:
                 row_fill = None
+            horas_normales_formula = None
             horas_extras_formula = None
             if sheet_names and idx - 1 < len(sheet_names):
                 sheet_name = sheet_names[idx - 1]
@@ -1943,8 +1944,10 @@ class TimeSheetConsolidator:
                 total_row = (last_detail_row + 1) if has_hour_col else None
                 last_data_row = total_row or last_detail_row
                 start_row = max(last_data_row + 2, 41)
+                r_total_1 = start_row
                 r_total_2 = start_row + 1
                 r_total_3 = start_row + 2
+                horas_normales_formula = f"='{sheet_name}'!L{r_total_1}"
                 horas_extras_formula = f"='{sheet_name}'!L{r_total_2}+'{sheet_name}'!L{r_total_3}"
             values = [
                 idx,
@@ -1955,7 +1958,7 @@ class TimeSheetConsolidator:
                 None,  # VALOR DÍA (formula)
                 None,  # TOTAL (formula)
                 None,  # DIAS LABORADOS REALES (formula desde HN)
-                round(metrics.total_horas_normales, 2),  # HN (valor)
+                horas_normales_formula or round(metrics.total_horas_normales, 2),  # HN
                 horas_extras_formula or round(metrics.total_horas_extras, 2),
                 None,  # VALOR A FACTURAR (formula)
                 round(metrics.valor_hora_extra, 2),
@@ -2593,12 +2596,45 @@ class TimeSheetConsolidator:
         tipo_letter = get_column_letter(tipo_col) if tipo_col else None
         horas_letter = get_column_letter(horas_col) if horas_col else None
 
+        def _find_last_data_row() -> int:
+            if not tipo_col and not horas_col:
+                return lastDetailRow
+            for row in range(lastDetailRow, firstDetailRow - 1, -1):
+                tipo_val = ws.cell(row=row, column=tipo_col).value if tipo_col else None
+                horas_val = ws.cell(row=row, column=horas_col).value if horas_col else None
+                if (tipo_val is not None and str(tipo_val).strip() != "") or (
+                    horas_val is not None and str(horas_val).strip() != ""
+                ):
+                    return row
+            return lastDetailRow
+
+        def _find_extra_start_row(last_row: int) -> int:
+            if not tipo_col:
+                return firstDetailRow
+            for row in range(firstDetailRow, last_row + 1):
+                value = ws.cell(row=row, column=tipo_col).value
+                if value is None:
+                    continue
+                if str(value).strip().upper() == "HS":
+                    return row
+            return firstDetailRow
+
         def _sumif(tipo: str) -> str:
             if not tipo_letter or not horas_letter:
                 return ""
-            tipo_range = f"{tipo_letter}{firstDetailRow}:{tipo_letter}{lastDetailRow}"
-            horas_range = f"{horas_letter}{firstDetailRow}:{horas_letter}{lastDetailRow}"
+            last_row = _find_last_data_row()
+            tipo_range = f"${tipo_letter}${firstDetailRow}:${tipo_letter}${last_row}"
+            horas_range = f"${horas_letter}${firstDetailRow}:${horas_letter}${last_row}"
             return f'=SUMIF({tipo_range},"{tipo}",{horas_range})'
+
+        def _sumif_hs() -> str:
+            if not tipo_letter or not horas_letter:
+                return ""
+            last_row = _find_last_data_row()
+            extra_start_row = _find_extra_start_row(last_row)
+            tipo_range = f"${tipo_letter}${firstDetailRow}:${tipo_letter}${last_row}"
+            horas_range = f"${horas_letter}${extra_start_row}:${horas_letter}${last_row}"
+            return f'=SUMIF({tipo_range},"HS",{horas_range})'
 
         bold_font = Font(name="Calibri", size=10, bold=True, color=COLOR_BLACK)
         normal_font = Font(name="Calibri", size=10, bold=False, color=COLOR_BLACK)
@@ -2624,14 +2660,8 @@ class TimeSheetConsolidator:
         ws[f"H{r_total_2}"].value = "Total Horas Extras entre semana"
         ws[f"H{r_total_3}"].value = "Total Horas Extras fin de semana o feriado"
 
-        if "Resumen" in ws.parent.sheetnames:
-            ws[f"L{r_total_1}"].value = (
-                '=IFERROR(INDEX(Resumen!$I:$I,MATCH($B$6,Resumen!$B:$B,0)),"")'
-            )
-        else:
-            ws[f"L{r_total_1}"].value = _sumif("HN")
-
-        ws[f"L{r_total_2}"].value = _sumif("HS")
+        ws[f"L{r_total_1}"].value = _sumif("HN")
+        ws[f"L{r_total_2}"].value = _sumif_hs()
         ws[f"L{r_total_3}"].value = _sumif("HF")
 
         for r in (r_total_1, r_total_2, r_total_3):
