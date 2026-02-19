@@ -1447,37 +1447,52 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         skipped_sheets: List[Tuple[str, List[str]]] = []
 
         try:
-            total_sheets = len(all_parsed_sheets)
+            profile_mapping: Dict[str, object] = {}
+            if auto_profile_id:
+                detected_profile = next((p for p in profiles if p.client_id == auto_profile_id), None)
+                if detected_profile:
+                    profile_mapping = detected_profile.mapping or {}
 
+            processable: List[Tuple[int, ParsedSheet, str, ColumnMapping]] = []
             for i, sheet in enumerate(all_parsed_sheets):
                 sheet_metadata = sheet.metadata or {}
                 emp_name = sheet_metadata.get("employee")
-                
+
                 if not emp_name:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
                     continue
-                
+
                 if emp_name.lower() in ["hoja1", "sheet1", "empleado", "consultor", "hoja", "sheet"]:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
                     continue
 
-                progress_text.info(f"⏳ Procesando ({i+1}/{total_sheets}): {emp_name}")
-                progress_bar.progress(int((i / max(total_sheets, 1)) * 90))
-
-                profile_mapping = {}
-                if auto_profile_id:
-                    detected_profile = next((p for p in profiles if p.client_id == auto_profile_id), None)
-                    if detected_profile: profile_mapping = detected_profile.mapping or {}
-
                 mapping_to_use = infer_column_mapping(sheet.dataframe, profile_mapping)
-
                 if mapping_to_use is None:
                     cols_detectadas = [str(c) for c in list(sheet.dataframe.columns)]
                     skipped_sheets.append((sheet.sheet_name, cols_detectadas))
                     continue
 
+                processable.append((i, sheet, emp_name, mapping_to_use))
+
+            total_sheets = len(processable)
+            if total_sheets == 0:
+                progress_bar.empty()
+                progress_text.empty()
+                st.error("❌ No se encontró ninguna hoja válida de timesheet.")
+                return
+
+            progress_text.info(f"⏳ Procesando ({0}/{total_sheets})...")
+            progress_bar.progress(1)
+
+            def _process_sheet(
+                idx: int,
+                sheet: ParsedSheet,
+                emp_name: str,
+                mapping_to_use: ColumnMapping,
+            ) -> Tuple[int, BatchFileResult]:
+                sheet_metadata = sheet.metadata or {}
                 result_single = processor.process_parsed_sheet(
                     parsed_sheet=sheet,
                     mapping=mapping_to_use,
@@ -1495,8 +1510,8 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
                     batch_fast_mode=True,
                     enable_debug_exports=False,
                 )
-
-                batch_results_accumulator.append(
+                return (
+                    idx,
                     BatchFileResult(
                         file_name=f"{emp_name}.xlsx",
                         success=True,
@@ -1504,8 +1519,27 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
                         sheet_name=emp_name,
                         client_id=auto_profile_id or "manual",
                         metadata=sheet_metadata,
-                    )
+                    ),
                 )
+
+            results_with_index: List[Tuple[int, BatchFileResult]] = []
+            completed = 0
+            max_workers = 4
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {
+                    executor.submit(_process_sheet, idx, sheet, emp_name, mapping_to_use): (idx, emp_name)
+                    for idx, sheet, emp_name, mapping_to_use in processable
+                }
+                for future in as_completed(future_map):
+                    idx, emp_name = future_map[future]
+                    result_item = future.result()
+                    results_with_index.append(result_item)
+                    completed += 1
+                    progress_text.info(f"🔄 Procesado {emp_name} ({completed}/{total_sheets})")
+                    progress_bar.progress(int((completed / max(total_sheets, 1)) * 90))
+
+            results_with_index.sort(key=lambda item: item[0])
+            batch_results_accumulator.extend([item[1] for item in results_with_index])
 
             if skipped_sheets:
                 with st.expander("🗂️ Hojas ignoradas", expanded=False):
