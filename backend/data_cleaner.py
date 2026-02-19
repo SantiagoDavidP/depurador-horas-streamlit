@@ -56,15 +56,23 @@ def detect_and_remove_metadata_rows(
         used_range or {},
     )
 
-    # 0) Eliminar columnas 100% vacías (NaN o strings vacíos)
+    # 0) Precalcular strings/trim para evitar múltiples astype(str)
     t0 = time.perf_counter()
     drop_cols = []
+    object_cols = work_df.select_dtypes(include=["object", "string"]).columns
+    stripped_df = pd.DataFrame(index=work_df.index)
+    if len(object_cols) > 0:
+        stripped_df = work_df[object_cols].astype(str).apply(lambda s: s.str.strip())
     try:
         all_nan = work_df.isna().all()
-        all_empty_str = work_df.astype(str).apply(lambda s: s.str.strip().eq("")).all()
+        all_empty_str = pd.Series(False, index=work_df.columns)
+        if len(object_cols) > 0:
+            all_empty_str.loc[object_cols] = stripped_df.eq("").all()
         drop_cols = list(work_df.columns[all_nan | all_empty_str])
         if drop_cols:
             work_df = work_df.drop(columns=drop_cols)
+            if not stripped_df.empty:
+                stripped_df = stripped_df.drop(columns=drop_cols, errors="ignore")
     except Exception:
         drop_cols = []
     if drop_cols:
@@ -81,8 +89,10 @@ def detect_and_remove_metadata_rows(
 
     # 1) Eliminar filas totalmente vacias (NaN, "", " ", "-", "---")
     t0 = time.perf_counter()
-    stripped = work_df.astype(str).apply(lambda s: s.str.strip())
-    empty_like = work_df.isna() | stripped.isin(empty_tokens) | stripped.eq("")
+    empty_like = work_df.isna()
+    if len(object_cols) > 0 and not stripped_df.empty:
+        obj_empty_like = stripped_df.isin(empty_tokens) | stripped_df.eq("")
+        empty_like.loc[:, object_cols] = empty_like.loc[:, object_cols] | obj_empty_like
     all_empty_mask = empty_like.all(axis=1)
     valid_mask &= ~all_empty_mask
     if perf:
@@ -90,9 +100,11 @@ def detect_and_remove_metadata_rows(
 
     # 2) Filas sin descripcion valida
     t0 = time.perf_counter()
-    desc_series = work_df[description_column].astype(str)
-    desc_clean = desc_series.str.strip()
-    desc_is_empty = desc_series.isna() | desc_clean.isin(empty_tokens) | desc_clean.eq("")
+    if description_column in stripped_df.columns:
+        desc_clean = stripped_df[description_column]
+    else:
+        desc_clean = work_df[description_column].astype(str).str.strip()
+    desc_is_empty = work_df[description_column].isna() | desc_clean.isin(empty_tokens) | desc_clean.eq("")
     valid_mask &= ~desc_is_empty
     if perf:
         perf.add("data_cleaner.desc_empty", time.perf_counter() - t0)
@@ -107,7 +119,10 @@ def detect_and_remove_metadata_rows(
 
     # 4) Metadata por columna fecha (mantener logica existente)
     t0 = time.perf_counter()
-    date_series = work_df[date_column].astype(str).str.lower()
+    if date_column in stripped_df.columns:
+        date_series = stripped_df[date_column].str.lower()
+    else:
+        date_series = work_df[date_column].astype(str).str.lower()
     valid_mask &= ~date_series.str.contains(_RE_METADATA, na=False)
     if perf:
         perf.add("data_cleaner.metadata_rows", time.perf_counter() - t0)
@@ -150,14 +165,17 @@ def detect_and_remove_metadata_rows(
     ]
     non_core_non_empty_count = pd.Series(0, index=work_df.index)
     if non_core_cols:
-        for col in non_core_cols:
-            series = work_df[col]
-            non_empty = (
-                series.notna()
-                & series.astype(str).str.strip().ne("")
-                & ~series.astype(str).str.strip().isin(empty_tokens)
+        non_core = work_df[non_core_cols]
+        non_empty = non_core.notna()
+        non_core_obj_cols = [col for col in non_core_cols if col in stripped_df.columns]
+        if non_core_obj_cols:
+            non_core_stripped = stripped_df[non_core_obj_cols]
+            non_empty.loc[:, non_core_obj_cols] = (
+                non_empty.loc[:, non_core_obj_cols]
+                & non_core_stripped.ne("")
+                & ~non_core_stripped.isin(empty_tokens)
             )
-            non_core_non_empty_count += non_empty.astype(int)
+        non_core_non_empty_count = non_empty.sum(axis=1).astype(int)
 
     footer_like = (
         hours_missing_or_zero

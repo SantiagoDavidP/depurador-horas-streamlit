@@ -19,6 +19,7 @@ import time
 import zipfile
 from io import BytesIO
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 
 # =============================================================================
@@ -67,6 +68,28 @@ from frontend.streamlit_ui_theme import (
     render_status_card,
     render_theme_toggle,
 )
+
+# Cache parseo por archivo para evitar reprocesar en reruns
+@st.cache_data(show_spinner=False)
+def _cached_load_sheet_with_header(
+    file_bytes: bytes, header_keywords: tuple
+) -> ParsedSheet:
+    return load_sheet_with_header(
+        file_bytes,
+        header_keywords=list(header_keywords) if header_keywords else None,
+    )
+
+@st.cache_data(show_spinner=False)
+def _cached_load_multiple_sheets(
+    file_bytes: bytes,
+    header_keywords: Optional[Tuple[str, ...]] = None,
+    auto_correct_period: bool = True,
+) -> List[ParsedSheet]:
+    return load_multiple_sheets(
+        file_bytes,
+        header_keywords=list(header_keywords) if header_keywords else None,
+        auto_correct_period=auto_correct_period,
+    )
 
 # =============================================================================
 # INITIALIZATION
@@ -476,7 +499,7 @@ def auto_detect_profile_from_files(
     profiles = get_profile_catalog()
     sample = files[0]
 
-    sheets = load_multiple_sheets(sample.getvalue())
+    sheets = _cached_load_multiple_sheets(sample.getvalue())
     parsed = next((s for s in sheets if not s.dataframe.empty), None)
     if not parsed:
         return None, {}
@@ -1032,9 +1055,9 @@ def run_batch_mode(
         return fallback_client_id
 
     for file_obj in uploaded_files:
-        parsed = load_sheet_with_header(
+        parsed = _cached_load_sheet_with_header(
             file_obj.getvalue(),
-            header_keywords=header_keywords,
+            tuple(header_keywords or []),
         )
 
         effective_client_id = _infer_client_id_for_file(
@@ -1094,11 +1117,23 @@ def run_batch_mode(
         def update_progress(
             current: int, total: int, message: str
         ) -> None:
-            pct = 0 if total == 0 else int((current / total) * 100)
-            progress_placeholder.info(
-                f"🔄 {message} ({current}/{total})"
+            stage_weights = {"read": 0.2, "map": 0.5, "process": 0.8}
+            stage_pct = 0.0
+            if "[stage:" in message:
+                try:
+                    stage = message.split("[stage:", 1)[1].split("]", 1)[0].strip()
+                    stage_pct = stage_weights.get(stage, 0.0)
+                except Exception:
+                    stage_pct = 0.0
+            base = 0.0 if total == 0 else (current / total)
+            display_current = (
+                str(min(current + 1, total)) if stage_pct > 0 else str(current)
             )
-            progress_bar.progress(min(pct, 100))
+            pct = int(min((base + (stage_pct / max(total, 1))) * 100, 100))
+            progress_placeholder.info(
+                f"🔄 {message} ({display_current}/{total})"
+            )
+            progress_bar.progress(max(pct, 1))
 
         results = batch_processor.process_batch(
             requests, progress_callback=update_progress
@@ -1248,7 +1283,7 @@ def run_individual_multisheet(correct_spelling: bool, employee_role: str) -> Non
         all_parsed_sheets = cached_sheets
     else:
         with st.spinner("Analizando archivo..."):
-            all_parsed_sheets = load_multiple_sheets(source_bytes)
+            all_parsed_sheets = _cached_load_multiple_sheets(source_bytes)
         st.session_state["multi_parsed_sheets_sig"] = parsed_sig
         st.session_state["multi_parsed_sheets_cache"] = all_parsed_sheets
 

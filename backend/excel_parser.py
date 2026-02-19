@@ -89,7 +89,12 @@ def list_sheets(excel_bytes: bytes) -> List[str]:
         raise
 
 
-def detect_used_range_real(excel_bytes: bytes, sheet_name: str) -> Tuple[int, int]:
+def detect_used_range_real(
+    excel_bytes: bytes,
+    sheet_name: str,
+    *,
+    workbook: Optional[object] = None,
+) -> Tuple[int, int]:
     """
     Detecta el rango real usado (max_row, max_col) basado SOLO en celdas con valores.
     Evita ws.max_row/max_column inflados por formato.
@@ -97,7 +102,7 @@ def detect_used_range_real(excel_bytes: bytes, sheet_name: str) -> Tuple[int, in
     max_row = 0
     max_col = 0
     try:
-        wb = load_workbook(BytesIO(excel_bytes), data_only=True)
+        wb = workbook or load_workbook(BytesIO(excel_bytes), data_only=True)
         ws = wb[sheet_name]
         for (row, col), cell in getattr(ws, "_cells", {}).items():
             value = cell.value
@@ -109,7 +114,8 @@ def detect_used_range_real(excel_bytes: bytes, sheet_name: str) -> Tuple[int, in
                 max_row = row
             if col > max_col:
                 max_col = col
-        wb.close()
+        if workbook is None:
+            wb.close()
     except Exception as exc:
         logger.warning("No se pudo detectar used range real: %s", exc)
 
@@ -498,6 +504,9 @@ def load_sheet_with_header(
     *,
     header_keywords: Optional[List[str]] = None,
     auto_correct_period: bool = True,
+    excel_file: Optional[pd.ExcelFile] = None,
+    workbook_styles: Optional[object] = None,
+    workbook_values: Optional[object] = None,
 ) -> ParsedSheet:
     """
     Carga hoja, limpia, arregla fechas y RECONSTRUYE EL PERIODO DESDE LOS DATOS (Autoridad Total).
@@ -506,12 +515,22 @@ def load_sheet_with_header(
     # ---------------------------------------------------------
     # 1. Carga y Detección Básica
     # ---------------------------------------------------------
-    with pd.ExcelFile(BytesIO(excel_bytes), engine="openpyxl") as xls:
+    xls = excel_file
+    created_excel = False
+    if xls is None:
+        xls = pd.ExcelFile(BytesIO(excel_bytes), engine="openpyxl")
+        created_excel = True
+    try:
         target_sheet = (
             sheet_name if sheet_name is not None
             else _select_best_sheet_from_excel_file(xls, header_keywords)
         )
-        max_row_real, max_col_real = detect_used_range_real(excel_bytes, target_sheet)
+        if workbook_values is not None:
+            max_row_real, max_col_real = detect_used_range_real(
+                excel_bytes, target_sheet, workbook=workbook_values
+            )
+        else:
+            max_row_real, max_col_real = detect_used_range_real(excel_bytes, target_sheet)
         logger.info(
             "Used range real detectado en '%s': rows=%d cols=%d",
             target_sheet,
@@ -525,6 +544,9 @@ def load_sheet_with_header(
             nrows=max_row_real if max_row_real > 0 else None,
             usecols=usecols,
         )
+    finally:
+        if created_excel:
+            xls.close()
 
     header_idx = (
         header_row if header_row is not None
@@ -737,114 +759,118 @@ def load_sheet_with_header(
 
     # Captura avanzada con estilos (openpyxl)
     try:
-        wb = load_workbook(BytesIO(excel_bytes), data_only=False)
+        wb = workbook_styles or load_workbook(BytesIO(excel_bytes), data_only=False)
+        wb_values = workbook_values or load_workbook(BytesIO(excel_bytes), data_only=True)
         ws = wb[target_sheet]
-        wb_values = load_workbook(BytesIO(excel_bytes), data_only=True)
         ws_values = wb_values[target_sheet]
-        
-        # Determinar última fila de datos: usar el máximo de original_row_numbers
-        # (es la fila más alta del dataframe limpio que ya ha sido procesado)
-        data_end_row = max(original_row_numbers) if original_row_numbers else header_idx + 1
-        
-        # Refinar buscando la ÚLTIMA FILA CON FECHA VÁLIDA desde el final hacia atrás
-        # Esto ayuda a capturar filas que pueden haber sido removidas del dataframe
-        # pero que son datos reales (no footer)
+
         try:
-            header_ws_row = header_idx + 1
-            date_idx = None
-            if date_col and date_col in normalized_columns:
-                date_idx = normalized_columns.index(date_col) + 1
+            # Determinar última fila de datos: usar el máximo de original_row_numbers
+            # (es la fila más alta del dataframe limpio que ya ha sido procesado)
+            data_end_row = max(original_row_numbers) if original_row_numbers else header_idx + 1
 
-            def _is_date_value(value: object) -> bool:
-                if value is None or value == "":
-                    return False
-                if isinstance(value, (date, datetime)):
-                    return True
-                text = str(value).strip()
-                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
-                    try:
-                        datetime.strptime(text, fmt)
+            # Refinar buscando la ÚLTIMA FILA CON FECHA VÁLIDA desde el final hacia atrás
+            # Esto ayuda a capturar filas que pueden haber sido removidas del dataframe
+            # pero que son datos reales (no footer)
+            try:
+                header_ws_row = header_idx + 1
+                date_idx = None
+                if date_col and date_col in normalized_columns:
+                    date_idx = normalized_columns.index(date_col) + 1
+
+                def _is_date_value(value: object) -> bool:
+                    if value is None or value == "":
+                        return False
+                    if isinstance(value, (date, datetime)):
                         return True
-                    except ValueError:
-                        continue
-                return False
+                    text = str(value).strip()
+                    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
+                        try:
+                            datetime.strptime(text, fmt)
+                            return True
+                        except ValueError:
+                            continue
+                    return False
 
-            if date_idx:
-                # Buscar desde el final hacia atrás para encontrar la última fecha válida
-                for r in range(ws.max_row, header_ws_row, -1):
-                    if _is_date_value(ws.cell(row=r, column=date_idx).value):
-                        data_end_row = r
-                        logger.debug(f"Última fila con fecha válida encontrada: {r}")
-                        break
-        except Exception as e:
-            logger.debug(f"Error refinando data_end_row: {e}")
-        
-        footer_start = data_end_row + 1
-        # Footer end: usar used range real para evitar rangos inflados por formato
-        used_range = metadata.get("used_range") or {}
-        max_row_real = int(used_range.get("max_row") or ws.max_row or 1)
-        max_col_real = int(used_range.get("max_col") or ws.max_column or 1)
-        footer_end = max_row_real
-        
-        logger.debug(f"Footer range: {footer_start} - {footer_end} (data_end: {data_end_row})")
-        
-        if footer_start <= footer_end:
-            max_col = max_col_real
-            cells = []
-            row_heights: Dict[int, float] = {}
-            merge_ranges = []
-            merged_coords = set()
+                if date_idx:
+                    # Buscar desde el final hacia atrás para encontrar la última fecha válida
+                    for r in range(ws.max_row, header_ws_row, -1):
+                        if _is_date_value(ws.cell(row=r, column=date_idx).value):
+                            data_end_row = r
+                            logger.debug(f"Última fila con fecha válida encontrada: {r}")
+                            break
+            except Exception as e:
+                logger.debug(f"Error refinando data_end_row: {e}")
 
-            for merge_range in ws.merged_cells.ranges:
-                min_col, min_row, max_col_m, max_row = range_boundaries(str(merge_range))
-                if min_row >= footer_start and min_row <= footer_end:
-                    merge_ranges.append((min_row, min_col, max_row, max_col_m))
-                    for r in range(min_row, max_row + 1):
-                        for c in range(min_col, max_col_m + 1):
-                            merged_coords.add((r, c))
+            footer_start = data_end_row + 1
+            # Footer end: usar used range real para evitar rangos inflados por formato
+            used_range = metadata.get("used_range") or {}
+            max_row_real = int(used_range.get("max_row") or ws.max_row or 1)
+            max_col_real = int(used_range.get("max_col") or ws.max_column or 1)
+            footer_end = max_row_real
 
-            cells_iterated = 0
-            for r in range(footer_start, footer_end + 1):
-                height = ws.row_dimensions[r].height
-                if height:
-                    row_heights[r] = height
-                for c in range(1, max_col + 1):
-                    cell = ws.cell(row=r, column=c)
-                    value_cell = ws_values.cell(row=r, column=c)
-                    # Para el footer, capturar TODAS las celdas, incluyendo las vacías
-                    # porque pueden tener estilos o ser parte de la estructura
-                    cells_iterated += 1
-                    cells.append(
-                        {
-                            "row": r,
-                            "col": c,
-                            "value": value_cell.value,
-                            "font": copy(cell.font),
-                            "fill": copy(cell.fill),
-                            "border": copy(cell.border),
-                            "alignment": copy(cell.alignment),
-                            "number_format": cell.number_format,
-                        }
-                    )
+            logger.debug(f"Footer range: {footer_start} - {footer_end} (data_end: {data_end_row})")
 
-            if cells or row_heights or merge_ranges:
-                footer_block = {
-                    "data_end_row": data_end_row,
-                    "start_row": footer_start,
-                    "max_row": footer_end,
-                    "max_col": max_col,
-                    "cells": cells,
-                    "row_heights": row_heights,
-                    "merges": merge_ranges,
-                }
-            logger.info(
-                "Footer capture: filas=%d cols=%d celdas_iteradas=%d",
-                (footer_end - footer_start + 1),
-                max_col,
-                cells_iterated,
-            )
-        wb.close()
-        wb_values.close()
+            if footer_start <= footer_end:
+                max_col = max_col_real
+                cells = []
+                row_heights: Dict[int, float] = {}
+                merge_ranges = []
+                merged_coords = set()
+
+                for merge_range in ws.merged_cells.ranges:
+                    min_col, min_row, max_col_m, max_row = range_boundaries(str(merge_range))
+                    if min_row >= footer_start and min_row <= footer_end:
+                        merge_ranges.append((min_row, min_col, max_row, max_col_m))
+                        for r in range(min_row, max_row + 1):
+                            for c in range(min_col, max_col_m + 1):
+                                merged_coords.add((r, c))
+
+                cells_iterated = 0
+                for r in range(footer_start, footer_end + 1):
+                    height = ws.row_dimensions[r].height
+                    if height:
+                        row_heights[r] = height
+                    for c in range(1, max_col + 1):
+                        cell = ws.cell(row=r, column=c)
+                        value_cell = ws_values.cell(row=r, column=c)
+                        # Para el footer, capturar TODAS las celdas, incluyendo las vacías
+                        # porque pueden tener estilos o ser parte de la estructura
+                        cells_iterated += 1
+                        cells.append(
+                            {
+                                "row": r,
+                                "col": c,
+                                "value": value_cell.value,
+                                "font": copy(cell.font),
+                                "fill": copy(cell.fill),
+                                "border": copy(cell.border),
+                                "alignment": copy(cell.alignment),
+                                "number_format": cell.number_format,
+                            }
+                        )
+
+                if cells or row_heights or merge_ranges:
+                    footer_block = {
+                        "data_end_row": data_end_row,
+                        "start_row": footer_start,
+                        "max_row": footer_end,
+                        "max_col": max_col,
+                        "cells": cells,
+                        "row_heights": row_heights,
+                        "merges": merge_ranges,
+                    }
+                logger.info(
+                    "Footer capture: filas=%d cols=%d celdas_iteradas=%d",
+                    (footer_end - footer_start + 1),
+                    max_col,
+                    cells_iterated,
+                )
+        finally:
+            if workbook_styles is None:
+                wb.close()
+            if workbook_values is None:
+                wb_values.close()
     except Exception as exc:
         logger.warning(f"No se pudo capturar footer con estilos: {exc}")
 
@@ -875,69 +901,89 @@ def load_multiple_sheets(
     # 1. Obtener SOLO nombres de hojas VISIBLES usando openpyxl
     # ---------------------------------------------------------
     visible_sheet_names = []
+    workbook_values = None
+    workbook_styles = None
     try:
-        # Usamos read_only=True para que sea rápido, solo queremos metadatos
-        wb = load_workbook(BytesIO(excel_bytes), read_only=True)
-        
-        for sheet in wb.worksheets:
+        workbook_values = load_workbook(BytesIO(excel_bytes), data_only=True)
+        workbook_styles = load_workbook(BytesIO(excel_bytes), data_only=False)
+
+        for sheet in workbook_values.worksheets:
             # sheet_state puede ser 'visible', 'hidden' o 'veryHidden'
             if sheet.sheet_state == 'visible':
                 visible_sheet_names.append(sheet.title)
             else:
                 logger.info(f"🙈 Ignorando hoja oculta: '{sheet.title}'")
-                
-        wb.close()
     except Exception as e:
         logger.error(f"Error filtrando hojas ocultas: {e}")
         # Fallback: si falla openpyxl, usamos pandas (aunque traerá las ocultas)
         try:
             visible_sheet_names = list_sheets(excel_bytes)
-        except:
+        except Exception:
             return []
+        workbook_values = None
+        workbook_styles = None
 
     logger.info(f"Hojas visibles a procesar: {visible_sheet_names}")
 
     # ---------------------------------------------------------
     # 2. Recorrer y filtrar
     # ---------------------------------------------------------
-    for name in visible_sheet_names:
-        try:
-            lower_name = name.strip().lower()
-            if lower_name in {"datos", "resumen", "catalogo", "catálogo", "listas", "pivot"}:
-                logger.info("Ignorando hoja auxiliar: '%s'", name)
-                continue
-            # --- FILTRO MAESTRO ---
-            # Si el nombre contiene "resumen", lo ignoramos.
-            if "resumen" in name.lower():
-                logger.info(f"🚫 Ignorando hoja '{name}' (es el resumen viejo).")
-                continue
-            
-            # Opcional: Ignorar hojas de sistema/temporales
-            if name.startswith("_") or "consolidado" in name.lower():
-                continue
+    excel_file = None
+    try:
+        excel_file = pd.ExcelFile(BytesIO(excel_bytes), engine="openpyxl")
+    except Exception as e:
+        logger.warning(f"No se pudo abrir ExcelFile para cachear parseo: {e}")
+        excel_file = None
 
-            # 3. Procesar hoja de Empleado
-            logger.info(f"Intentando cargar hoja de empleado: {name}")
-            
-            parsed = load_sheet_with_header(
-                excel_bytes,
-                sheet_name=name,  # Forzamos esta hoja específica
-                header_keywords=header_keywords,
-                auto_correct_period=auto_correct_period
-            )
-            
-            # Solo guardamos si tiene datos (filas > 0)
-            if not parsed.dataframe.empty and len(parsed.dataframe) > 0:
-                # Si la metadata no trajo el nombre del empleado, usamos el nombre de la hoja
-                if "employee" not in parsed.metadata:
-                    parsed.metadata["employee"] = name
-                
-                results.append(parsed)
-                logger.info(f"✅ Empleado '{name}' cargado correctamente.")
-            
-        except Exception as exc:
-            # Si falla (porque no tiene columnas de Fecha/Horas), asumimos que no es un timesheet
-            logger.warning(f"⚠️ La hoja '{name}' no parece un timesheet válido. Se omite.")
+    try:
+        for name in visible_sheet_names:
+            try:
+                lower_name = name.strip().lower()
+                if lower_name in {"datos", "resumen", "catalogo", "catálogo", "listas", "pivot"}:
+                    logger.info("Ignorando hoja auxiliar: '%s'", name)
+                    continue
+                # --- FILTRO MAESTRO ---
+                # Si el nombre contiene "resumen", lo ignoramos.
+                if "resumen" in name.lower():
+                    logger.info(f"🚫 Ignorando hoja '{name}' (es el resumen viejo).")
+                    continue
+
+                # Opcional: Ignorar hojas de sistema/temporales
+                if name.startswith("_") or "consolidado" in name.lower():
+                    continue
+
+                # 3. Procesar hoja de Empleado
+                logger.info(f"Intentando cargar hoja de empleado: {name}")
+
+                parsed = load_sheet_with_header(
+                    excel_bytes,
+                    sheet_name=name,  # Forzamos esta hoja específica
+                    header_keywords=header_keywords,
+                    auto_correct_period=auto_correct_period,
+                    excel_file=excel_file,
+                    workbook_styles=workbook_styles,
+                    workbook_values=workbook_values,
+                )
+
+                # Solo guardamos si tiene datos (filas > 0)
+                if not parsed.dataframe.empty and len(parsed.dataframe) > 0:
+                    # Si la metadata no trajo el nombre del empleado, usamos el nombre de la hoja
+                    if "employee" not in parsed.metadata:
+                        parsed.metadata["employee"] = name
+
+                    results.append(parsed)
+                    logger.info(f"✅ Empleado '{name}' cargado correctamente.")
+
+            except Exception:
+                # Si falla (porque no tiene columnas de Fecha/Horas), asumimos que no es un timesheet
+                logger.warning(f"⚠️ La hoja '{name}' no parece un timesheet válido. Se omite.")
+    finally:
+        if excel_file is not None:
+            excel_file.close()
+        if workbook_styles is not None:
+            workbook_styles.close()
+        if workbook_values is not None:
+            workbook_values.close()
 
     return results
 

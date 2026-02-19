@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from queue import Empty, Queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
@@ -51,7 +52,7 @@ class BatchProcessor:
         files: Sequence[BatchFileRequest],
         *,
         progress_callback: Optional[BatchProgress] = None,
-        max_workers: int = 3,
+        max_workers: int = 4,
     ) -> List[BatchFileResult]:
         """
         Procesa archivos en paralelo usando ThreadPoolExecutor.
@@ -59,51 +60,73 @@ class BatchProcessor:
         Args:
             files: Archivos a procesar
             progress_callback: Callback para actualizar progreso
-            max_workers: Número máximo de threads paralelos (default 3)
+            max_workers: Número máximo de threads paralelos (default 4)
         """
         results: List[BatchFileResult] = []
         total = len(files)
+        progress_queue: Queue[str] = Queue()
+        if progress_callback:
+            progress_callback(0, total, "[stage:init] ⏳ Preparando procesamiento...")
         
         # 🟢 PARALLELISM: Usar ThreadPoolExecutor para procesar múltiples archivos simultáneamente
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Mapear futures a file_request para mantener el orden
             future_to_file = {
-                executor.submit(self._process_single_file, file_request): (index, file_request)
+                executor.submit(
+                    self._process_single_file, file_request, progress_queue
+                ): (index, file_request)
                 for index, file_request in enumerate(files)
             }
             
-            # Procesar completados en orden de terminación
-            for future in as_completed(future_to_file):
-                index, file_request = future_to_file[future]
+            pending = set(future_to_file.keys())
+            # Procesar completados mientras enviamos actualizaciones de progreso
+            while pending:
                 try:
-                    result = future.result()
-                    results.append((index, result))
+                    message = progress_queue.get(timeout=0.2)
                     if progress_callback:
-                        progress_callback(len(results), total, f"✅ Procesado {file_request.file_name}")
-                except Exception as exc:
-                    logger.exception("Error procesando archivo %s: %s", file_request.file_name, exc)
-                    results.append(
-                        (index, BatchFileResult(
-                            file_name=file_request.file_name,
-                            success=False,
-                            error=str(exc),
-                            sheet_name=file_request.sheet_name,
-                            client_id=file_request.client_id,
-                        ))
-                    )
-                    if progress_callback:
-                        progress_callback(len(results), total, f"❌ Error en {file_request.file_name}")
+                        progress_callback(len(results), total, message)
+                except Empty:
+                    pass
+
+                done = {future for future in pending if future.done()}
+                for future in done:
+                    index, file_request = future_to_file[future]
+                    try:
+                        result = future.result()
+                        results.append((index, result))
+                        if progress_callback:
+                            progress_callback(len(results), total, f"✅ Procesado {file_request.file_name}")
+                    except Exception as exc:
+                        logger.exception("Error procesando archivo %s: %s", file_request.file_name, exc)
+                        results.append(
+                            (index, BatchFileResult(
+                                file_name=file_request.file_name,
+                                success=False,
+                                error=str(exc),
+                                sheet_name=file_request.sheet_name,
+                                client_id=file_request.client_id,
+                            ))
+                        )
+                        if progress_callback:
+                            progress_callback(len(results), total, f"❌ Error en {file_request.file_name}")
+                    pending.remove(future)
         
         # Ordenar resultados por índice original para mantener consistencia
         results.sort(key=lambda x: x[0])
         return [result for _, result in results]
 
-    def _process_single_file(self, file_request: BatchFileRequest) -> BatchFileResult:
+    def _process_single_file(
+        self,
+        file_request: BatchFileRequest,
+        progress_queue: Optional[Queue[str]] = None,
+    ) -> BatchFileResult:
         """Procesa un archivo individual. Separado para usar con ThreadPoolExecutor."""
         file_start = time.perf_counter()
         parsed_sheet: Optional[ParsedSheet] = None
         
         try:
+            if progress_queue:
+                progress_queue.put(f"[stage:read] 📄 Leyendo {file_request.file_name}...")
             t0 = time.perf_counter()
             parsed_sheet = file_request.parsed_sheet
             if parsed_sheet is None:
@@ -115,12 +138,16 @@ class BatchProcessor:
                 )
             logger.info("⏱️ [%s] Parsed sheet en %.2fs", file_request.file_name, time.perf_counter() - t0)
             
+            if progress_queue:
+                progress_queue.put(f"[stage:map] 🧭 Mapeando columnas: {file_request.file_name}")
             t1 = time.perf_counter()
             adjusted_mapping = self._align_mapping_with_dataframe(
                 parsed_sheet, file_request.mapping
             )
             logger.info("⏱️ [%s] Aligned mapping en %.2fs", file_request.file_name, time.perf_counter() - t1)
             
+            if progress_queue:
+                progress_queue.put(f"[stage:process] ⚙️ Procesando: {file_request.file_name}")
             t2 = time.perf_counter()
             processor_result = self.processor.process_parsed_sheet(
                 parsed_sheet=parsed_sheet,

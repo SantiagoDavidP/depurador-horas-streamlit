@@ -9,6 +9,7 @@ from datetime import date
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Sequence, Set, TypedDict
 
+import numpy as np
 import pandas as pd
 import holidays
 from fuzzywuzzy import fuzz
@@ -210,67 +211,76 @@ def validate_calendar_constraints(
             df[date_column], errors="coerce", dayfirst=True
         )
 
-    # Caché de feriados por año para optimizar
-    holidays_cache: Dict[int, Set[date]] = {}
-
     raw_dates = df[date_column]
     parsed = parsed_dates
     is_invalid = parsed.isna()
-    valid_idx = parsed.index[~is_invalid]
 
     # Fechas inválidas (mantener misma fila/valor)
-    for idx in parsed.index[is_invalid]:
-        row_number = _get_row_number(row_numbers, idx)
-        raw_date = raw_dates.iloc[idx]
-        issues.append(
-            ValidationIssue(
-                fila=row_number,
-                fecha=_normalize_date_output(raw_date),
-                tipo_error="fecha_invalida",
-                descripcion="Fecha inválida o con formato no reconocido. Revise el valor.",
-                valor_original=_normalize_date_output(raw_date),
-                valor_corregido="",
+    if is_invalid.any():
+        invalid_idx = parsed.index[is_invalid]
+        for idx in invalid_idx:
+            row_number = _get_row_number(row_numbers, idx)
+            raw_date = raw_dates.iloc[idx]
+            issues.append(
+                ValidationIssue(
+                    fila=row_number,
+                    fecha=_normalize_date_output(raw_date),
+                    tipo_error="fecha_invalida",
+                    descripcion="Fecha inválida o con formato no reconocido. Revise el valor.",
+                    valor_original=_normalize_date_output(raw_date),
+                    valor_corregido="",
+                )
             )
-        )
 
-    if len(valid_idx) == 0:
+    if not (~is_invalid).any():
         logger.info("validate_calendar_constraints: %d errores de calendario detectados usando columna Fecha", len(issues))
         return issues
 
-    parsed_valid = parsed.loc[valid_idx]
-    raw_valid = raw_dates.loc[valid_idx]
-    fecha_iso = parsed_valid.dt.strftime("%Y-%m-%d")
+    parsed_valid = parsed.loc[~is_invalid]
+    raw_valid = raw_dates.loc[~is_invalid]
+    valid_index = parsed_valid.index.to_numpy()
+    raw_values = raw_valid.to_numpy()
+    fecha_iso = parsed_valid.dt.strftime("%Y-%m-%d").to_numpy()
 
     # Fines de semana
-    is_weekend = parsed_valid.dt.weekday >= 5
-    for idx in parsed_valid.index[is_weekend]:
-        row_number = _get_row_number(row_numbers, idx)
-        issues.append(
-            ValidationIssue(
-                fila=row_number,
-                fecha=fecha_iso.loc[idx],
-                tipo_error="fin_semana",
-                descripcion="Registro en fin de semana. Validar si son Horas Extras.",
-                valor_original=_normalize_date_output(raw_valid.loc[idx]),
-                valor_corregido="",
+    weekend_mask = parsed_valid.dt.weekday.to_numpy() >= 5
+    if weekend_mask.any():
+        for pos in np.flatnonzero(weekend_mask):
+            idx = valid_index[pos]
+            row_number = _get_row_number(row_numbers, idx)
+            issues.append(
+                ValidationIssue(
+                    fila=row_number,
+                    fecha=fecha_iso[pos],
+                    tipo_error="fin_semana",
+                    descripcion="Registro en fin de semana. Validar si son Horas Extras.",
+                    valor_original=_normalize_date_output(raw_values[pos]),
+                    valor_corregido="",
+                )
             )
-        )
 
     # Feriados por año (manteniendo la misma lógica de cache)
-    for year in parsed_valid.dt.year.unique():
+    holidays_cache: Dict[int, Set[date]] = {}
+    years = parsed_valid.dt.year.to_numpy()
+    dates_as_date = parsed_valid.dt.date.to_numpy()
+    for year in pd.unique(years):
         if year not in holidays_cache:
             holidays_cache[year] = _get_ec_holidays(int(year))
-        year_mask = parsed_valid.dt.year == year
-        for idx in parsed_valid.index[year_mask]:
-            if parsed_valid.loc[idx].date() in holidays_cache[year]:
+        year_mask = years == year
+        if not year_mask.any():
+            continue
+        year_positions = np.flatnonzero(year_mask)
+        for pos in year_positions:
+            if dates_as_date[pos] in holidays_cache[year]:
+                idx = valid_index[pos]
                 row_number = _get_row_number(row_numbers, idx)
                 issues.append(
                     ValidationIssue(
                         fila=row_number,
-                        fecha=fecha_iso.loc[idx],
+                        fecha=fecha_iso[pos],
                         tipo_error="feriado",
                         descripcion="Registro en feriado nacional ecuatoriano. Valide la autorización.",
-                        valor_original=_normalize_date_output(raw_valid.loc[idx]),
+                        valor_original=_normalize_date_output(raw_values[pos]),
                         valor_corregido="",
                     )
                 )
@@ -1043,14 +1053,16 @@ def validate_missing_fields(
 
     t0 = time.perf_counter()
     subset = df[columns_to_check]
-    stripped = subset.astype(str).apply(lambda s: s.str.strip())
-    empty_mask = subset.isna() | stripped.eq("")
+    empty_mask = subset.isna()
+    object_cols = subset.select_dtypes(include=["object", "string"]).columns
+    if len(object_cols) > 0:
+        stripped = subset[object_cols].astype(str).apply(lambda s: s.str.strip())
+        empty_mask.loc[:, object_cols] = empty_mask.loc[:, object_cols] | stripped.eq("")
     if perf:
         perf.add("validators.missing_fields.mask", time.perf_counter() - t0)
 
-    empty_positions = empty_mask.stack()
-    empty_positions = empty_positions[empty_positions]
-    if empty_positions.empty:
+    empty_values = empty_mask.to_numpy()
+    if not empty_values.any():
         logger.info("validate_missing_fields: %d campos vacíos detectados", len(issues))
         return issues
 
@@ -1059,13 +1071,12 @@ def validate_missing_fields(
         if date_column in df.columns
         else pd.Series([""] * len(df), index=df.index)
     )
-    index_positions = {idx: pos for pos, idx in enumerate(df.index)}
-
     t0 = time.perf_counter()
-    for row_idx, col_name in empty_positions.index:
-        pos = index_positions.get(row_idx, 0)
-        row_number = _get_row_number(row_numbers, pos)
-        fecha = fechas.loc[row_idx] if row_idx in fechas.index else ""
+    fechas_list = list(fechas)
+    for row_pos, col_pos in np.argwhere(empty_values):
+        col_name = columns_to_check[col_pos]
+        row_number = _get_row_number(row_numbers, row_pos)
+        fecha = fechas_list[row_pos] if row_pos < len(fechas_list) else ""
         issues.append(
             ValidationIssue(
                 fila=row_number,
