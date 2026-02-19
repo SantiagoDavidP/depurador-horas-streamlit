@@ -661,8 +661,6 @@ class TimeSheetProcessor:
         batch_fast_mode: bool = False,
         enable_debug_exports: bool = True,
     ) -> ProcessorResult:
-        # Desactivar IA para procesamiento (comentado por solicitud)
-        correct_spelling = False
         df = parsed_sheet.dataframe.copy()
         df = self._drop_empty_columns(df)
         perf = PerfCollector()
@@ -860,7 +858,7 @@ class TimeSheetProcessor:
             )
 
         self._apply_validation_corrections(df_clean, mapping, row_numbers, validation_errors)
-        # IA desactivada: no aplicar correcciones LLM
+        # Correcciones LLM (solo si correct_spelling está activo)
         corrections = self._apply_corrections(
             df_clean,
             mapping=mapping,
