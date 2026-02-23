@@ -12,3 +12,8 @@ venv/
 # Local tooling
 .zencoder/
 .zenflow/
+
+# React frontend
+react-frontend/node_modules/
+react-frontend/dist/
+react-frontend/.vite/

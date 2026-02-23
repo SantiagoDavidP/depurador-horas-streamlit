@@ -859,6 +859,8 @@ class TimeSheetProcessor:
 
         self._apply_validation_corrections(df_clean, mapping, row_numbers, validation_errors)
         # Correcciones LLM (solo si correct_spelling está activo)
+        if not correct_spelling:
+            logger.info("LLM desactivado para %s", source_name)
         corrections = self._apply_corrections(
             df_clean,
             mapping=mapping,
