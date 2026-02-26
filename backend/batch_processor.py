@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from queue import Empty, Queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -46,6 +47,18 @@ class BatchProcessor:
 
     def __init__(self, processor: TimeSheetProcessor) -> None:
         self.processor = processor
+        self._processor_tls = threading.local()
+
+    def _get_thread_processor(self) -> TimeSheetProcessor:
+        """Create one processor per worker thread to avoid async-client sharing."""
+        thread_processor = getattr(self._processor_tls, "processor", None)
+        if thread_processor is None:
+            thread_processor = TimeSheetProcessor(
+                expected_hours_per_day=self.processor.expected_hours,
+                role_validator=self.processor.role_validator,
+            )
+            self._processor_tls.processor = thread_processor
+        return thread_processor
 
     def process_batch(
         self,
@@ -149,7 +162,8 @@ class BatchProcessor:
             if progress_queue:
                 progress_queue.put(f"[stage:process] ⚙️ Procesando: {file_request.file_name}")
             t2 = time.perf_counter()
-            processor_result = self.processor.process_parsed_sheet(
+            processor_to_use = self._get_thread_processor()
+            processor_result = processor_to_use.process_parsed_sheet(
                 parsed_sheet=parsed_sheet,
                 mapping=adjusted_mapping,
                 source_name=file_request.file_name,

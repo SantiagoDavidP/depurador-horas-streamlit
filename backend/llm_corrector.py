@@ -38,6 +38,7 @@ class LLMCorrector:
         max_concurrent_requests: int = 3,
         temperature: float = 1.0, # Modelos o1/4o a veces requieren temp=1
         enable_cache: bool = True,
+        request_timeout_seconds: float = 45.0,
     ) -> None:
         settings = get_settings()
         if not client:
@@ -55,6 +56,7 @@ class LLMCorrector:
         # Tamaño de lote real por request (recomendado 5-10)
         self.batch_size = max(1, min(int(batch_size), 10))
         self.temperature = temperature
+        self.request_timeout_seconds = max(5.0, float(request_timeout_seconds))
         
         # Concurrencia controlada por batch; dejamos semaphore opcional por compatibilidad
         self._concurrency_limit = max_concurrent_requests
@@ -177,13 +179,17 @@ class LLMCorrector:
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.deployment_name,
-                messages=[
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=1,
+            response = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=self.deployment_name,
+                    messages=[
+                        {"role": "system", "content": self._system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=1,
+                    timeout=self.request_timeout_seconds,
+                ),
+                timeout=self.request_timeout_seconds + 5.0,
             )
             content = response.choices[0].message.content or ""
             batch_payload = self._parse_llm_batch_response(content)
@@ -205,6 +211,15 @@ class LLMCorrector:
                 if self.enable_cache and self._cache:
                     self._cache.set(original, role, project, parsed)
 
+            return results
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timeout en lote LLM (%s items, %.1fs). Se aplica fallback sin bloquear.",
+                len(uncached),
+                self.request_timeout_seconds,
+            )
+            for _, original in uncached:
+                results[original] = self._default_result(original)
             return results
         except Exception:
             # Fallback: si el lote falla, no bloqueamos proceso.

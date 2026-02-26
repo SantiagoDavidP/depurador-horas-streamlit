@@ -230,6 +230,52 @@ class TimeSheetProcessor:
                 df.at[row_idx, mapping.description] = correction.corrected_text
         return corrections
 
+    @staticmethod
+    def _fill_grouped_dates_for_payload(
+        df: pd.DataFrame,
+        *,
+        date_column: str,
+        hours_column: str,
+        description_column: Optional[str],
+    ) -> int:
+        """Fill grouped/merged date cells only for rows that look like real payload."""
+        if date_column not in df.columns or df.empty:
+            return 0
+
+        date_series = df[date_column]
+        before_missing = date_series.isna() | date_series.astype(str).str.strip().eq("")
+
+        if description_column and description_column in df.columns:
+            desc_clean = df[description_column].fillna("").astype(str).str.strip()
+        else:
+            desc_clean = pd.Series("", index=df.index, dtype="object")
+        desc_lower = desc_clean.str.lower()
+
+        desc_has_text = desc_clean.ne("") & ~desc_clean.isin({"-", "---"})
+        desc_is_summary = desc_lower.str.startswith(("total", "resumen", "suma", "acumulado"))
+        desc_has_metadata_token = desc_lower.str.contains(
+            r"(?:elaborado|aprobado|firma|periodo|fecha del informe|cliente|consultor|"
+            r"recurso|repositorio|sharepoint|informe de actividades|http://|https://|\\\\)",
+            na=False,
+        )
+
+        if hours_column in df.columns:
+            hours_num = pd.to_numeric(df[hours_column], errors="coerce")
+        else:
+            hours_num = pd.Series(pd.NA, index=df.index, dtype="float64")
+        hours_has_value = hours_num.notna() & (hours_num != 0)
+
+        payload_mask = (desc_has_text & ~desc_is_summary & ~desc_has_metadata_token) | hours_has_value
+        fill_mask = before_missing & payload_mask
+
+        if not fill_mask.any():
+            return 0
+
+        df.loc[payload_mask, date_column] = df.loc[payload_mask, date_column].ffill()
+        after_missing = df[date_column].isna() | df[date_column].astype(str).str.strip().eq("")
+        filled = int((before_missing & payload_mask & ~after_missing).sum())
+        return filled
+
     def _create_summary(
         self,
         df: pd.DataFrame,
@@ -704,24 +750,15 @@ class TimeSheetProcessor:
         logger.info("TIMING: baninter_preparacion en %.2fs", time.perf_counter() - t_stage)
         t_stage = time.perf_counter()
 
-        # Completar fechas agrupadas (celdas vacías) antes de validar el mapeo
-        if mapping.date in df.columns:
-            if mapping.description in df.columns:
-                desc_series = df[mapping.description].astype(str).str.strip()
-            else:
-                desc_series = pd.Series(index=df.index, dtype="object")
-
-            if mapping.hours in df.columns:
-                hours_series = pd.to_numeric(df[mapping.hours], errors="coerce")
-            else:
-                hours_series = pd.Series(index=df.index, dtype="float")
-
-            has_payload = (
-                desc_series.notna()
-                & desc_series.ne("")
-                & ~desc_series.isin({"-", "---"})
-            ) | (hours_series.notna() & (hours_series != 0))
-            # df.loc[has_payload, mapping.date] = df.loc[has_payload, mapping.date].ffill()
+        # Completar fechas agrupadas (celdas vacias) para filas con payload real.
+        filled_grouped_dates = self._fill_grouped_dates_for_payload(
+            df,
+            date_column=mapping.date,
+            hours_column=mapping.hours,
+            description_column=mapping.description if mapping.description in df.columns else None,
+        )
+        if filled_grouped_dates > 0:
+            logger.info("Fechas agrupadas imputadas: %d", filled_grouped_dates)
 
         # Remover filas de totales que se vuelven "válidas" tras ffill (evita falsos positivos)
         if mapping.description in df.columns and mapping.hours in df.columns:
@@ -869,6 +906,8 @@ class TimeSheetProcessor:
             role=role,
             project=project_name,
         )
+        metadata["llm_enabled"] = bool(correct_spelling)
+        metadata["llm_corrections_count"] = len(corrections)
 
         role_analysis = self._analyze_role(df_clean, mapping, role, row_numbers)
 

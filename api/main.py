@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 
@@ -53,6 +55,19 @@ app.add_middleware(
 
 processor = TimeSheetProcessor()
 batch_processor = BatchProcessor(processor)
+_individual_processor_tls = threading.local()
+
+
+def _get_individual_thread_processor() -> TimeSheetProcessor:
+    """Avoid sharing async Azure client across worker threads."""
+    thread_processor = getattr(_individual_processor_tls, "processor", None)
+    if thread_processor is None:
+        thread_processor = TimeSheetProcessor(
+            expected_hours_per_day=processor.expected_hours,
+            role_validator=processor.role_validator,
+        )
+        _individual_processor_tls.processor = thread_processor
+    return thread_processor
 
 
 def _parse_payload(payload: Optional[str]) -> Dict[str, object]:
@@ -62,6 +77,23 @@ def _parse_payload(payload: Optional[str]) -> Dict[str, object]:
         return json.loads(payload)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {exc}") from exc
+
+
+def _to_bool(value: object, *, default: bool = False) -> bool:
+    """Parse booleans robustly from JSON/form inputs."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off", ""}:
+            return False
+    return bool(value)
 
 
 _SAFE_META_KEYS = (
@@ -76,6 +108,8 @@ _SAFE_META_KEYS = (
     "period_source",
     "metadata_warning",
     "baninter_report",
+    "llm_enabled",
+    "llm_corrections_count",
 )
 
 
@@ -130,6 +164,8 @@ def _serialize_result(
             "download_id": download_id,
             "output_filename": res.output_filename,
             "holiday_info": holiday_info,
+            "llm_enabled": _to_bool((res.metadata or {}).get("llm_enabled"), default=False),
+            "llm_corrections_count": len(res.corrections_log or []),
         }
     )
 
@@ -179,7 +215,7 @@ def get_me(user: Optional[Dict[str, object]] = Depends(require_user)) -> Dict[st
 
 
 @app.post("/api/batch/analyze")
-async def analyze_batch(
+def analyze_batch(
     files: List[UploadFile] = File(...),
     user: Optional[Dict[str, object]] = Depends(require_user),
 ) -> Dict[str, object]:
@@ -187,7 +223,7 @@ async def analyze_batch(
         raise HTTPException(status_code=400, detail="No files provided")
 
     file = files[0]
-    file_bytes = await file.read()
+    file_bytes = file.file.read()
     profiles = list(get_profile_catalog().values())
     profile_id, metadata = auto_detect_profile_from_files(file_bytes, file.filename, profiles)
     safe_meta = _compact_metadata(metadata)
@@ -210,11 +246,11 @@ async def analyze_batch(
 
 
 @app.post("/api/individual/analyze")
-async def analyze_individual(
+def analyze_individual(
     file: UploadFile = File(...),
     user: Optional[Dict[str, object]] = Depends(require_user),
 ) -> Dict[str, object]:
-    file_bytes = await file.read()
+    file_bytes = file.file.read()
     sheets = load_multiple_sheets(file_bytes)
     filtered = []
     skipped = []
@@ -288,12 +324,12 @@ async def analyze_individual(
 
 
 @app.post("/api/individual/process")
-async def process_individual(
+def process_individual(
     file: UploadFile = File(...),
     payload: Optional[str] = Form(None),
     user: Optional[Dict[str, object]] = Depends(require_user),
 ) -> Dict[str, object]:
-    file_bytes = await file.read()
+    file_bytes = file.file.read()
     data = _parse_payload(payload)
 
     settings = data.get("settings") or {}
@@ -338,7 +374,13 @@ async def process_individual(
 
     effective_settings = {**profile_settings, **normalized_profile_settings, **settings}
 
-    correct_spelling = bool(effective_settings.get("correctSpelling", True))
+    correct_spelling = _to_bool(
+        effective_settings.get(
+            "correctSpelling",
+            effective_settings.get("correct_spelling", True),
+        ),
+        default=True,
+    )
     duplicate_similarity_threshold = int(effective_settings.get("duplicateSimilarityThreshold", 90))
     duplicate_min_occurrences = int(effective_settings.get("duplicateMinOccurrences", 3))
     hours_tolerance_factor = float(effective_settings.get("hoursToleranceFactor", 1.5))
@@ -372,8 +414,18 @@ async def process_individual(
     def _process_sheet(
         idx: int, sheet: object, emp_name: str, mapping_to_use: ColumnMapping
     ) -> Tuple[int, BatchFileResult, ColumnMapping]:
+        sheet_start = time.perf_counter()
+        sheet_processor = (
+            _get_individual_thread_processor() if max_workers > 1 else processor
+        )
+        logger.info(
+            "[individual] Start %s (%d/%d)",
+            emp_name,
+            idx + 1,
+            processable_count if processable_count > 0 else 1,
+        )
         try:
-            result = processor.process_parsed_sheet(
+            result = sheet_processor.process_parsed_sheet(
                 parsed_sheet=sheet,  # type: ignore[arg-type]
                 mapping=mapping_to_use,
                 source_name=f"{file.filename} :: {emp_name}",
@@ -398,7 +450,13 @@ async def process_individual(
                 client_id=profile_id or "manual",
                 metadata=sheet.metadata if hasattr(sheet, "metadata") else {},
             )
+            logger.info(
+                "[individual] Done %s in %.2fs",
+                emp_name,
+                time.perf_counter() - sheet_start,
+            )
         except Exception as exc:
+            logger.exception("[individual] Failed %s: %s", emp_name, exc)
             batch_result = BatchFileResult(
                 file_name=f"{emp_name}.xlsx",
                 success=False,
@@ -409,7 +467,16 @@ async def process_individual(
             )
         return idx, batch_result, mapping_to_use
 
-    max_workers = int(data.get("maxWorkers", 4))
+    requested_workers = int(data.get("maxWorkers", 4))
+    processable_count = len(processable)
+    worker_cap = 4 if correct_spelling else 8
+    max_workers = max(1, min(requested_workers, processable_count if processable_count > 0 else 1, worker_cap))
+    logger.info(
+        "[individual] Processing %d consultant(s) with %d worker(s) (IA=%s)",
+        processable_count,
+        max_workers,
+        "on" if correct_spelling else "off",
+    )
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {
             executor.submit(_process_sheet, idx, sheet, emp_name, mapping_to_use): idx
@@ -510,6 +577,8 @@ def _build_baninter_zip(batch_results: List[BatchFileResult]) -> Optional[bytes]
         for idx, res in enumerate(batch_results):
             if not (res.success and res.result):
                 continue
+            if not is_baninter_result(res.file_name, res.metadata, res.client_id):
+                continue
             business_bytes, business_name = generate_individual_business_it_excel(
                 res, cliente="BANINTER"
             )
@@ -527,7 +596,7 @@ def _build_baninter_zip(batch_results: List[BatchFileResult]) -> Optional[bytes]
 
 
 @app.post("/api/batch/process")
-async def process_batch(
+def process_batch(
     files: List[UploadFile] = File(...),
     payload: Optional[str] = Form(None),
     user: Optional[Dict[str, object]] = Depends(require_user),
@@ -538,7 +607,10 @@ async def process_batch(
     settings = data.get("settings") or {}
     max_workers = int(data.get("maxWorkers", 4))
 
-    correct_spelling = bool(settings.get("correctSpelling", True))
+    correct_spelling = _to_bool(
+        settings.get("correctSpelling", settings.get("correct_spelling")),
+        default=True,
+    )
     duplicate_similarity_threshold = int(settings.get("duplicateSimilarityThreshold", 90))
     duplicate_min_occurrences = int(settings.get("duplicateMinOccurrences", 3))
     hours_tolerance_factor = float(settings.get("hoursToleranceFactor", 1.5))
@@ -565,50 +637,64 @@ async def process_batch(
     hours_tolerance = float(profile_settings.get("hours_tolerance_factor", hours_tolerance_factor))
     role_to_use = str(profile_settings.get("rol_default") or profile_settings.get("role") or role)
     # Respetar el toggle del usuario; si no viene, usar configuración del perfil o default.
-    spelling_flag = bool(settings.get("correctSpelling", profile_settings.get("correct_spelling", correct_spelling)))
+    spelling_flag = _to_bool(
+        settings.get("correctSpelling", settings.get("correct_spelling")),
+        default=_to_bool(profile_settings.get("correct_spelling"), default=correct_spelling),
+    )
 
-    requests: List[BatchFileRequest] = []
-    mappings: List[ColumnMapping] = []
+    file_payloads: List[Tuple[str, bytes]] = []
     for file_obj in files:
-        file_bytes = await file_obj.read()
+        file_payloads.append((file_obj.filename or "reporte.xlsx", file_obj.file.read()))
+
+    profile_mapping = profile_obj.mapping if profile_obj else {}
+
+    def _prepare_batch_request(file_payload: Tuple[str, bytes]) -> Tuple[BatchFileRequest, ColumnMapping]:
+        file_name, file_bytes = file_payload
         parsed = load_sheet_with_header(
             file_bytes,
             header_keywords=header_keywords,
         )
 
         effective_client_id = _infer_client_id_for_file(
-            file_obj.filename, getattr(parsed, "metadata", {}) or {}, profile_id
+            file_name, getattr(parsed, "metadata", {}) or {}, profile_id
         )
 
         dynamic_mapping = infer_column_mapping(
             parsed.dataframe,
-            profile_obj.mapping if profile_obj else {},
+            profile_mapping,
         )
-
         mapping_to_use = dynamic_mapping or base_mapping
-        mappings.append(mapping_to_use)
 
-        requests.append(
-            BatchFileRequest(
-                file_name=file_obj.filename or "reporte.xlsx",
-                file_bytes=file_bytes,
-                mapping=mapping_to_use,
-                client_id=effective_client_id,
-                header_keywords=header_keywords,
-                profile_settings=profile_settings,
-                parsed_sheet=parsed,
-                processor_kwargs={
-                    "correct_spelling": spelling_flag,
-                    "role": role_to_use,
-                    "project_name": mapping_to_use.project or "No especificado",
-                    "duplicate_similarity_threshold": duplicate_threshold,
-                    "duplicate_min_occurrences": min_duplicates_setting,
-                    "hours_tolerance_factor": hours_tolerance,
-                    "batch_fast_mode": True,
-                    "enable_debug_exports": False,
-                },
-            )
+        request = BatchFileRequest(
+            file_name=file_name,
+            file_bytes=file_bytes,
+            mapping=mapping_to_use,
+            client_id=effective_client_id,
+            header_keywords=header_keywords,
+            profile_settings=profile_settings,
+            parsed_sheet=parsed,
+            processor_kwargs={
+                "correct_spelling": spelling_flag,
+                "role": role_to_use,
+                "project_name": mapping_to_use.project or "No especificado",
+                "duplicate_similarity_threshold": duplicate_threshold,
+                "duplicate_min_occurrences": min_duplicates_setting,
+                "hours_tolerance_factor": hours_tolerance,
+                "batch_fast_mode": True,
+                "enable_debug_exports": False,
+            },
         )
+        return request, mapping_to_use
+
+    prep_workers = max(1, min(max_workers, len(file_payloads)))
+    if prep_workers == 1:
+        prepared_items = [_prepare_batch_request(item) for item in file_payloads]
+    else:
+        with ThreadPoolExecutor(max_workers=prep_workers) as executor:
+            prepared_items = list(executor.map(_prepare_batch_request, file_payloads))
+
+    requests = [item[0] for item in prepared_items]
+    mappings = [item[1] for item in prepared_items]
 
     results = batch_processor.process_batch(requests, max_workers=max_workers)
     batch_id = store_batch(results, source="batch")

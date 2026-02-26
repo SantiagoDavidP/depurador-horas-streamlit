@@ -21,6 +21,8 @@
   --brand-logo-bg: rgba(15, 23, 42, 0.12);
   --table-header-bg: rgba(248, 250, 255, 0.95);
   --table-header-text: #4b5563;
+  --table-row-alt: rgba(241, 245, 249, 0.55);
+  --table-row-hover: rgba(219, 234, 254, 0.65);
   --accent: #1c7dd6;
   --accent-hover: #135fa5;
   --accent-2: #18c6b9;
@@ -55,6 +57,8 @@
   --brand-logo-bg: rgba(15, 23, 42, 0.7);
   --table-header-bg: rgba(17, 24, 39, 0.95);
   --table-header-text: #e2e8f0;
+  --table-row-alt: rgba(15, 23, 42, 0.7);
+  --table-row-hover: rgba(30, 41, 59, 0.9);
   --accent: #38bdf8;
   --accent-hover: #22a5d8;
   --accent-2: #34d399;
@@ -1037,16 +1041,30 @@ input[type="radio"] {
 }
 
 .table th {
-  color: var(--text-muted);
+  color: var(--table-header-text);
+  background: var(--table-header-bg);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.table td {
+  color: var(--text-primary);
+}
+
+.table tbody tr:nth-child(odd) {
+  background: var(--table-row-alt);
+}
+
+.table tbody tr:hover {
+  background: var(--table-row-hover);
 }
 
 .progress-bar {
   position: relative;
   height: 8px;
   background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
   border-radius: 999px;
   overflow: hidden;
 }

@@ -72,6 +72,7 @@ const App = () => {
   const [batchElapsed, setBatchElapsed] = useState(0);
   const [batchProgressPct, setBatchProgressPct] = useState(0);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchWarning, setBatchWarning] = useState<string | null>(null);
   const [batchConsolidated, setBatchConsolidated] = useState<ConsolidateResponse | null>(null);
   const [batchConsolidating, setBatchConsolidating] = useState(false);
   const [batchBaninterZip, setBatchBaninterZip] = useState<{ download_id: string; filename: string } | null>(null);
@@ -227,6 +228,7 @@ const App = () => {
     if (batchFiles.length === 0) return;
     setBatchProcessing(true);
     setBatchError(null);
+    setBatchWarning(null);
     setBatchResults([]);
     setBatchConsolidated(null);
     setBatchBaninterZip(null);
@@ -256,9 +258,36 @@ const App = () => {
           : "Manual"
       );
 
-      if (response.is_baninter && response.batch_id) {
-        const zip = await buildBaninterZip({ batchId: response.batch_id });
-        setBatchBaninterZip(zip);
+      const successfulResults = (response.results || []).filter((r) => r.success);
+      const isBaninterResult = (result: ResultItem) => {
+        const clientId = String(result.client_id || "").toLowerCase();
+        const metadata = (result.metadata || {}) as Record<string, unknown>;
+        const company = String(metadata.company || "").toLowerCase();
+        const fileName = String(result.file_name || "").toLowerCase();
+        return (
+          clientId === "cliente_talent" ||
+          company.includes("baninter") ||
+          company.includes("banco internacional") ||
+          fileName.includes("baninter")
+        );
+      };
+
+      const hasBaninter = successfulResults.some((result) => isBaninterResult(result));
+      const hasOtherClient = successfulResults.some((result) => !isBaninterResult(result));
+
+      if (hasBaninter && hasOtherClient) {
+        setBatchWarning(
+          "Se detectaron dos clientes distintos (BANINTER y NOVA) en el mismo lote. Por favor procese un solo cliente por carga."
+        );
+      }
+
+      if (response.is_baninter && response.batch_id && hasBaninter && !hasOtherClient) {
+        try {
+          const zip = await buildBaninterZip({ batchId: response.batch_id });
+          setBatchBaninterZip(zip);
+        } catch {
+          setBatchBaninterZip(null);
+        }
       }
       setBatchProgressPct(100);
     } catch (err: any) {
@@ -328,10 +357,14 @@ const App = () => {
     setIndividualConsolidated(null);
     setIndividualBaninterZip(null);
     try {
+      const consultantsCount = Math.max(1, individualAnalysis?.employee_count || 1);
+      const workerCap = individualSettings.correctSpelling ? 4 : 8;
+      const individualWorkers = Math.min(workerCap, consultantsCount);
       const response = await processIndividual(individualFile, {
         settings: individualSettings,
         profileId: individualAnalysis?.auto_profile_id || null,
         areaSelection: individualAreaSelection,
+        maxWorkers: individualWorkers,
       });
       setIndividualResults(response.results || []);
       setIndividualBatchId(response.batch_id);
@@ -409,8 +442,15 @@ const App = () => {
         ...prev,
         correctSpelling: checked,
       }));
+      setIndividualResults([]);
+      setIndividualConsolidated(null);
+      setIndividualBaninterZip(null);
     } else {
       setCorrectSpelling(checked);
+      setBatchResults([]);
+      setBatchConsolidated(null);
+      setBatchBaninterZip(null);
+      setBatchWarning(null);
     }
   };
   const resetBatchInput = () => {
@@ -597,6 +637,11 @@ const App = () => {
             </div>
           </div>
         )}
+        {typeof result.llm_enabled === "boolean" && (
+          <p className="small" style={{ marginTop: 8 }}>
+            IA aplicada: {result.llm_enabled ? "Si" : "No"} - Correcciones IA: {result.llm_corrections_count ?? 0}
+          </p>
+        )}
 
         {baninterReport && (
           <div style={{ marginTop: 12 }}>
@@ -691,6 +736,36 @@ const App = () => {
       />
     );
   };
+
+  const consultantDetailTable = (results: ResultItem[]) => (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Consultor</th>
+          <th>Registros</th>
+          <th>Horas</th>
+          <th>Errores</th>
+          <th>Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {results.map((r, idx) => (
+          <tr key={idx}>
+            <td>{r.employee_info?.final || r.sheet_name || r.file_name}</td>
+            <td>{r.summary?.total_registros ?? "-"}</td>
+            <td>{r.summary?.horas_totales?.toFixed(1) ?? "-"}</td>
+            <td>{r.summary?.total_errores ?? "-"}</td>
+            <td>
+              {r.summary?.quality_score?.toFixed(0)}%{" "}
+              <div className="progress-bar">
+                <span style={{ width: `${r.summary?.quality_score || 0}%` }} />
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
   return (
     <AuthGate>
       <div className={`app ${theme === "dark" ? "theme-dark" : ""}`}>
@@ -1127,33 +1202,13 @@ const App = () => {
 
                   <hr className="divider" />
                   <h3>Detalle por Consultor</h3>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Consultor</th>
-                        <th>Registros</th>
-                        <th>Horas</th>
-                        <th>Errores</th>
-                        <th>Score</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {individualResults.map((r, idx) => (
-                        <tr key={idx}>
-                          <td>{r.employee_info?.final || r.sheet_name || r.file_name}</td>
-                          <td>{r.summary?.total_registros ?? "-"}</td>
-                          <td>{r.summary?.horas_totales?.toFixed(1) ?? "-"}</td>
-                          <td>{r.summary?.total_errores ?? "-"}</td>
-                          <td>
-                            {r.summary?.quality_score?.toFixed(0)}%{" "}
-                            <div className="progress-bar">
-                              <span style={{ width: `${r.summary?.quality_score || 0}%` }} />
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {consultantDetailTable(individualResults)}
+                  {individualResults.length > 1 && (
+                    <>
+                      <hr className="divider" />
+                      {consolidatedChart(individualResults)}
+                    </>
+                  )}
 
                   <hr className="divider" />
                   {individualBaninterZip ? (
@@ -1288,6 +1343,7 @@ const App = () => {
                       batchFiles.length || 1
                     )}
                   {batchError && <div className="status-card error">{batchError}</div>}
+                  {batchWarning && <div className="status-card">{batchWarning}</div>}
                 </div>
               )}
 
@@ -1303,6 +1359,10 @@ const App = () => {
                       Referencias: Daily ~0.25h - Reuniones 0.25-3h - Dev 1-8h - Review 0.25-2h
                     </p>
                   )}
+
+                  <hr className="divider" />
+                  <h3>Detalle por Consultor</h3>
+                  {consultantDetailTable(batchResults)}
 
                   {batchResults.length > 1 && (
                     <>

@@ -650,7 +650,14 @@ def load_sheet_with_header(
 
     data_df = _remove_junk_columns(data_df)
     data_df = _remove_junk_rows(data_df)
-    data_df = data_df.replace(r"^\s*$", pd.NA, regex=True)
+    object_like_cols = data_df.select_dtypes(include=["object", "string"]).columns
+    if len(object_like_cols) > 0:
+        with pd.option_context("future.no_silent_downcasting", True):
+            data_df[object_like_cols] = (
+                data_df[object_like_cols]
+                .replace(r"^\s*$", pd.NA, regex=True)
+                .infer_objects(copy=False)
+            )
     data_df = data_df.dropna(how="all")
     data_df = _drop_empty_columns(data_df)
 
@@ -677,14 +684,36 @@ def load_sheet_with_header(
             
     if date_col and hours_col:
         rows_before = len(data_df)
-        data_df = data_df.dropna(subset=[date_col, hours_col], how='all')
-        mask_ghost = (
-            (data_df[date_col].isna() | (data_df[date_col].astype(str).str.strip() == '')) &
-            (data_df[hours_col].isna() | (data_df[hours_col] == 0))
-        )
+        data_df = data_df.dropna(subset=[date_col, hours_col], how="all")
+
+        desc_col = None
+        for c in data_df.columns:
+            if any(x in str(c).lower() for x in ["actividad", "descrip", "tarea", "task"]):
+                desc_col = c
+                break
+
+        missing_date = data_df[date_col].isna() | data_df[date_col].astype(str).str.strip().eq("")
+        hours_num = pd.to_numeric(data_df[hours_col], errors="coerce")
+        missing_hours = hours_num.isna() | hours_num.eq(0)
+
+        if desc_col:
+            desc_clean = data_df[desc_col].fillna("").astype(str).str.strip()
+            desc_lower = desc_clean.str.lower()
+            desc_has_text = desc_clean.ne("") & ~desc_clean.isin({"-", "---"})
+            desc_is_summary = desc_lower.str.startswith(("total", "resumen", "suma", "acumulado"))
+            desc_has_metadata_token = desc_lower.str.contains(
+                r"(?:elaborado|aprobado|firma|periodo|fecha del informe|cliente|consultor|"
+                r"recurso|repositorio|sharepoint|informe de actividades|http://|https://|\\\\)",
+                na=False,
+            )
+            mask_ghost = missing_date & missing_hours & (
+                ~desc_has_text | desc_is_summary | desc_has_metadata_token
+            )
+        else:
+            mask_ghost = missing_date & missing_hours
         data_df = data_df[~mask_ghost]
         if len(data_df) != rows_before:
-            logger.info(f"👻 Filas fantasma eliminadas: {rows_before - len(data_df)}")
+            logger.info(f"Filas fantasma eliminadas: {rows_before - len(data_df)}")
 
     # ---------------------------------------------------------
     # 3. CORRECCIÓN AVANZADA DE FECHAS (El FIX de Johanna)

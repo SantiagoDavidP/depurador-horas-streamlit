@@ -51,6 +51,8 @@ export interface ResultItem {
   holiday_info?: HolidayInfo | null;
   baninter_business_id?: string;
   baninter_business_filename?: string;
+  llm_enabled?: boolean;
+  llm_corrections_count?: number;
 }
 
 export interface AnalyzeBatchResponse {

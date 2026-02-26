@@ -9,6 +9,20 @@ import {
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
+const parseErrorDetail = async (res: Response, fallback: string): Promise<string> => {
+  const raw = await res.text();
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail;
+    }
+  } catch {
+    // noop: si no es JSON, devolvemos el texto crudo
+  }
+  return raw || fallback;
+};
+
 const withAuth = async (headers: HeadersInit = {}) => {
   const token = await getAccessToken();
   if (token) {
@@ -62,8 +76,8 @@ export const processBatch = async (
     headers: await withAuth(),
   });
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || "Error procesando por lotes.");
+    const detail = await parseErrorDetail(res, "Error procesando por lotes.");
+    throw new Error(detail);
   }
   return res.json();
 };
@@ -95,8 +109,8 @@ export const processIndividual = async (
     headers: await withAuth(),
   });
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || "Error procesando archivo.");
+    const detail = await parseErrorDetail(res, "Error procesando archivo.");
+    throw new Error(detail);
   }
   return res.json();
 };
@@ -110,8 +124,8 @@ export const consolidateBatch = async (
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || "Error generando consolidado.");
+    const detail = await parseErrorDetail(res, "Error generando consolidado.");
+    throw new Error(detail);
   }
   return res.json();
 };
@@ -125,8 +139,8 @@ export const buildBaninterZip = async (
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || "Error generando ZIP BANINTER.");
+    const detail = await parseErrorDetail(res, "Error generando ZIP BANINTER.");
+    throw new Error(detail);
   }
   return res.json();
 };
