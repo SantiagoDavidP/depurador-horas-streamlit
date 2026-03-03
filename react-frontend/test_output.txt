@@ -1,0 +1,211 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend[39m
+
+[90mstderr[2m | src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22m[2mTimesheetViewModel[2m > [22m[2mshould initialize with default values
+[22m[39m[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+The above error occurred in the <TestComponent> component:
+
+    at TestComponent (/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22m[2mTimesheetViewModel[2m > [22m[2mshould toggle theme
+[22m[39m[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+The above error occurred in the <TestComponent> component:
+
+    at TestComponent (/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22m[2mTimesheetViewModel[2m > [22m[2mshould change processing mode
+[22m[39m[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+The above error occurred in the <TestComponent> component:
+
+    at TestComponent (/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22m[2mTimesheetViewModel[2m > [22m[2mshould handle individual file selection and analysis
+[22m[39m[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+The above error occurred in the <TestComponent> component:
+
+    at TestComponent (/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22m[2mTimesheetViewModel[2m > [22m[2mshould handle batch file removal
+[22m[39m[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+The above error occurred in the <TestComponent> component:
+
+    at TestComponent (/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22m[2mTimesheetViewModel[2m > [22m[2mshould clear all batch files
+[22m[39m[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+The above error occurred in the <TestComponent> component:
+
+    at TestComponent (/Users/davidsanchez/Documents/GitHub/depurador-horas-streamlit/react-frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31m❯[39m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[32m 20[2mms[22m[39m
+[31m     [31m×[31m should initialize with default values[39m[32m 13[2mms[22m[39m
+[31m     [31m×[31m should toggle theme[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m should change processing mode[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m should handle individual file selection and analysis[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m should handle batch file removal[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m should clear all batch files[39m[32m 1[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 6 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22mTimesheetViewModel[2m > [22mshould initialize with default values
+[31m[1mTypeError[22m: () => mockTimesheetRepository is not a constructor[39m
+[36m [2m❯[22m Module.useTimesheetViewModel src/feat/timesheet/presentation/view_model/TimesheetViewModel.ts:[2m14:24[22m[39m
+    [90m 12| [39m
+    [90m 13| [39m[35mexport[39m [35mconst[39m useTimesheetViewModel [33m=[39m () [33m=>[39m {
+    [90m 14| [39m    [35mconst[39m repository [33m=[39m [35mnew[39m [33mTimesheetRepositoryImpl[39m()[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 15| [39m
+    [90m 16| [39m    [35mconst[39m [theme[33m,[39m setTheme] [33m=[39m useState[33m<[39m[32m"light"[39m [33m|[39m [32m"dark"[39m[33m>[39m(() [33m=>[39m {
+[90m [2m❯[22m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts:[2m34:45[22m[39m
+[90m [2m❯[22m TestComponent node_modules/@testing-library/react/dist/pure.js:[2m330:27[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:[2m4164:14[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.#callDispatchEventListeners node_modules/happy-dom/lib/event/EventTarget.js:[2m241:34[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.dispatchEvent node_modules/happy-dom/lib/event/EventTarget.js:[2m104:41[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22mTimesheetViewModel[2m > [22mshould toggle theme
+[31m[1mTypeError[22m: () => mockTimesheetRepository is not a constructor[39m
+[36m [2m❯[22m Module.useTimesheetViewModel src/feat/timesheet/presentation/view_model/TimesheetViewModel.ts:[2m14:24[22m[39m
+    [90m 12| [39m
+    [90m 13| [39m[35mexport[39m [35mconst[39m useTimesheetViewModel [33m=[39m () [33m=>[39m {
+    [90m 14| [39m    [35mconst[39m repository [33m=[39m [35mnew[39m [33mTimesheetRepositoryImpl[39m()[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 15| [39m
+    [90m 16| [39m    [35mconst[39m [theme[33m,[39m setTheme] [33m=[39m useState[33m<[39m[32m"light"[39m [33m|[39m [32m"dark"[39m[33m>[39m(() [33m=>[39m {
+[90m [2m❯[22m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts:[2m43:45[22m[39m
+[90m [2m❯[22m TestComponent node_modules/@testing-library/react/dist/pure.js:[2m330:27[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:[2m4164:14[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.#callDispatchEventListeners node_modules/happy-dom/lib/event/EventTarget.js:[2m241:34[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.dispatchEvent node_modules/happy-dom/lib/event/EventTarget.js:[2m104:41[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22mTimesheetViewModel[2m > [22mshould change processing mode
+[31m[1mTypeError[22m: () => mockTimesheetRepository is not a constructor[39m
+[36m [2m❯[22m Module.useTimesheetViewModel src/feat/timesheet/presentation/view_model/TimesheetViewModel.ts:[2m14:24[22m[39m
+    [90m 12| [39m
+    [90m 13| [39m[35mexport[39m [35mconst[39m useTimesheetViewModel [33m=[39m () [33m=>[39m {
+    [90m 14| [39m    [35mconst[39m repository [33m=[39m [35mnew[39m [33mTimesheetRepositoryImpl[39m()[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 15| [39m
+    [90m 16| [39m    [35mconst[39m [theme[33m,[39m setTheme] [33m=[39m useState[33m<[39m[32m"light"[39m [33m|[39m [32m"dark"[39m[33m>[39m(() [33m=>[39m {
+[90m [2m❯[22m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts:[2m59:45[22m[39m
+[90m [2m❯[22m TestComponent node_modules/@testing-library/react/dist/pure.js:[2m330:27[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:[2m4164:14[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.#callDispatchEventListeners node_modules/happy-dom/lib/event/EventTarget.js:[2m241:34[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.dispatchEvent node_modules/happy-dom/lib/event/EventTarget.js:[2m104:41[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22mTimesheetViewModel[2m > [22mshould handle individual file selection and analysis
+[31m[1mTypeError[22m: () => mockTimesheetRepository is not a constructor[39m
+[36m [2m❯[22m Module.useTimesheetViewModel src/feat/timesheet/presentation/view_model/TimesheetViewModel.ts:[2m14:24[22m[39m
+    [90m 12| [39m
+    [90m 13| [39m[35mexport[39m [35mconst[39m useTimesheetViewModel [33m=[39m () [33m=>[39m {
+    [90m 14| [39m    [35mconst[39m repository [33m=[39m [35mnew[39m [33mTimesheetRepositoryImpl[39m()[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 15| [39m
+    [90m 16| [39m    [35mconst[39m [theme[33m,[39m setTheme] [33m=[39m useState[33m<[39m[32m"light"[39m [33m|[39m [32m"dark"[39m[33m>[39m(() [33m=>[39m {
+[90m [2m❯[22m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts:[2m68:45[22m[39m
+[90m [2m❯[22m TestComponent node_modules/@testing-library/react/dist/pure.js:[2m330:27[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:[2m4164:14[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.#callDispatchEventListeners node_modules/happy-dom/lib/event/EventTarget.js:[2m241:34[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.dispatchEvent node_modules/happy-dom/lib/event/EventTarget.js:[2m104:41[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22mTimesheetViewModel[2m > [22mshould handle batch file removal
+[31m[1mTypeError[22m: () => mockTimesheetRepository is not a constructor[39m
+[36m [2m❯[22m Module.useTimesheetViewModel src/feat/timesheet/presentation/view_model/TimesheetViewModel.ts:[2m14:24[22m[39m
+    [90m 12| [39m
+    [90m 13| [39m[35mexport[39m [35mconst[39m useTimesheetViewModel [33m=[39m () [33m=>[39m {
+    [90m 14| [39m    [35mconst[39m repository [33m=[39m [35mnew[39m [33mTimesheetRepositoryImpl[39m()[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 15| [39m
+    [90m 16| [39m    [35mconst[39m [theme[33m,[39m setTheme] [33m=[39m useState[33m<[39m[32m"light"[39m [33m|[39m [32m"dark"[39m[33m>[39m(() [33m=>[39m {
+[90m [2m❯[22m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts:[2m80:45[22m[39m
+[90m [2m❯[22m TestComponent node_modules/@testing-library/react/dist/pure.js:[2m330:27[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:[2m4164:14[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.#callDispatchEventListeners node_modules/happy-dom/lib/event/EventTarget.js:[2m241:34[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.dispatchEvent node_modules/happy-dom/lib/event/EventTarget.js:[2m104:41[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts[2m > [22mTimesheetViewModel[2m > [22mshould clear all batch files
+[31m[1mTypeError[22m: () => mockTimesheetRepository is not a constructor[39m
+[36m [2m❯[22m Module.useTimesheetViewModel src/feat/timesheet/presentation/view_model/TimesheetViewModel.ts:[2m14:24[22m[39m
+    [90m 12| [39m
+    [90m 13| [39m[35mexport[39m [35mconst[39m useTimesheetViewModel [33m=[39m () [33m=>[39m {
+    [90m 14| [39m    [35mconst[39m repository [33m=[39m [35mnew[39m [33mTimesheetRepositoryImpl[39m()[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 15| [39m
+    [90m 16| [39m    [35mconst[39m [theme[33m,[39m setTheme] [33m=[39m useState[33m<[39m[32m"light"[39m [33m|[39m [32m"dark"[39m[33m>[39m(() [33m=>[39m {
+[90m [2m❯[22m src/feat/timesheet/presentation/view_model/TimesheetViewModel.test.ts:[2m99:45[22m[39m
+[90m [2m❯[22m TestComponent node_modules/@testing-library/react/dist/pure.js:[2m330:27[22m[39m
+[90m [2m❯[22m renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:[2m15486:18[22m[39m
+[90m [2m❯[22m mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:[2m20103:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom.development.js:[2m21626:16[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.callCallback node_modules/react-dom/cjs/react-dom.development.js:[2m4164:14[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.#callDispatchEventListeners node_modules/happy-dom/lib/event/EventTarget.js:[2m241:34[22m[39m
+[90m [2m❯[22m HTMLUnknownElement.dispatchEvent node_modules/happy-dom/lib/event/EventTarget.js:[2m104:41[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m6 failed[39m[22m[90m (6)[39m
+[2m   Start at [22m 12:31:01
+[2m   Duration [22m 344ms[2m (transform 45ms, setup 48ms, import 70ms, tests 20ms, environment 125ms)[22m
+

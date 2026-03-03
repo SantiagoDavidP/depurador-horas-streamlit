@@ -13,6 +13,7 @@ interface ResultCardProps {
     errorColWidths: number[];
     onResizeStart: (index: number, event: React.MouseEvent) => void;
     onDownload: (downloadId?: string, filename?: string) => void;
+    noPadding?: boolean;
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({
@@ -21,6 +22,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     errorColWidths,
     onResizeStart,
     onDownload,
+    noPadding = false,
 }) => {
     const summary = result.summary;
     const score = summary?.quality_score ?? 0;
@@ -68,10 +70,16 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     };
 
     return (
-        <div key={`${result.file_name}-${index}`} className="card" style={{ marginBottom: 16 }}>
-            <div className="flex-between">
-                <Typography variant="h3" style={{ margin: 0 }}>{employeeName}</Typography>
-                <Tag>Score: {score.toFixed(0)}%</Tag>
+        <div
+            key={`${result.file_name}-${index}`}
+            className={`card ${noPadding ? "card-no-padding" : ""}`}
+            style={{ marginBottom: 16 }}
+        >
+            <div className={noPadding ? "card-text-content" : ""}>
+                <div className="flex-between">
+                    <Typography variant="h3" style={{ margin: 0 }}>{employeeName}</Typography>
+                    <Tag>Score: {score.toFixed(0)}%</Tag>
+                </div>
             </div>
 
             {metadataItems.length > 0 && (
@@ -90,17 +98,22 @@ export const ResultCard: React.FC<ResultCardProps> = ({
             )}
 
             {summary && (
-                <div className="metric-grid" style={{ marginTop: 12 }}>
-                    <MetricCard label="Registros" value={summary.total_registros} />
-                    <MetricCard label="Horas" value={summary.horas_totales.toFixed(1)} />
-                    <MetricCard label="Errores" value={summary.total_errores} />
-                    <MetricCard label="Score" value={`${summary.quality_score.toFixed(0)}%`} />
+                <div className={noPadding ? "card-grid-content" : ""} style={{ marginTop: 12 }}>
+                    <div className="metric-grid">
+                        <MetricCard label="Registros" value={summary.total_registros} />
+                        <MetricCard label="Horas" value={summary.horas_totales.toFixed(1)} />
+                        <MetricCard label="Errores" value={summary.total_errores} />
+                        <MetricCard label="Score" value={`${summary.quality_score.toFixed(0)}%`} />
+                    </div>
                 </div>
             )}
+
             {typeof result.llm_enabled === "boolean" && (
-                <Typography variant="small" style={{ marginTop: 8 }}>
-                    IA aplicada: {result.llm_enabled ? "Si" : "No"} - Correcciones IA: {result.llm_corrections_count ?? 0}
-                </Typography>
+                <div className={noPadding ? "card-text-content" : ""}>
+                    <Typography variant="small" style={{ marginTop: 8 }}>
+                        IA aplicada: {result.llm_enabled ? "Si" : "No"} - Correcciones IA: {result.llm_corrections_count ?? 0}
+                    </Typography>
+                </div>
             )}
 
             {baninterReport && (
@@ -133,27 +146,29 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 </div>
             )}
 
-            {result.download_id &&
-                result.output_filename &&
-                !(result.baninter_business_id && result.baninter_business_filename) && (
-                    <div style={{ marginTop: 12 }}>
-                        <Button variant="outline" onClick={() => onDownload(result.download_id, result.output_filename)}>
-                            Descargar Excel
+            <div className={noPadding ? "card-text-content" : ""}>
+                {result.download_id &&
+                    result.output_filename &&
+                    !(result.baninter_business_id && result.baninter_business_filename) && (
+                        <div style={{ marginTop: 12 }}>
+                            <Button variant="outline" onClick={() => onDownload(result.download_id, result.output_filename)}>
+                                Descargar Excel
+                            </Button>
+                        </div>
+                    )}
+                {result.baninter_business_id && result.baninter_business_filename && (
+                    <div style={{ marginTop: 8 }}>
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                onDownload(result.baninter_business_id, result.baninter_business_filename)
+                            }
+                        >
+                            Descargar Excel Business IT
                         </Button>
                     </div>
                 )}
-            {result.baninter_business_id && result.baninter_business_filename && (
-                <div style={{ marginTop: 8 }}>
-                    <Button
-                        variant="outline"
-                        onClick={() =>
-                            onDownload(result.baninter_business_id, result.baninter_business_filename)
-                        }
-                    >
-                        Descargar Excel Business IT
-                    </Button>
-                </div>
-            )}
+            </div>
 
             <div style={{ marginTop: 12 }}>
                 <details className="expander">

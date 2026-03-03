@@ -10,6 +10,7 @@ interface ProgressPanelProps {
     currentLabel?: string;
     currentIndex?: number;
     total?: number;
+    noPadding?: boolean;
 }
 
 export const ProgressPanel: React.FC<ProgressPanelProps> = ({
@@ -20,6 +21,7 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({
     currentLabel,
     currentIndex,
     total,
+    noPadding = false,
 }) => {
     const formatDuration = (secs: number) => {
         if (!secs || secs < 0) return "0:00";
@@ -29,21 +31,38 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({
     };
 
     return (
-        <div className="progress-panel">
-            <div className="progress-head">
-                <div>
-                    <Typography variant="h4" className="progress-title">{title}</Typography>
-                    <div className="progress-subtitle">{detail}</div>
-                </div>
-                <div className="progress-time">Tiempo: {formatDuration(seconds)}</div>
+        <div className={`progress-panel ${noPadding ? "progress-panel-no-padding" : ""}`}>
+            <div className={noPadding ? "card-text-content" : "progress-head"}>
+                {noPadding ? (
+                    <div className="progress-head" style={{ marginBottom: 0 }}>
+                        <div>
+                            <Typography variant="h4" className="progress-title">{title}</Typography>
+                            <div className="progress-subtitle">{detail}</div>
+                        </div>
+                        <div className="progress-time">Tiempo: {formatDuration(seconds)}</div>
+                    </div>
+                ) : (
+                    <>
+                        <div>
+                            <Typography variant="h4" className="progress-title">{title}</Typography>
+                            <div className="progress-subtitle">{detail}</div>
+                        </div>
+                        <div className="progress-time">Tiempo: {formatDuration(seconds)}</div>
+                    </>
+                )}
             </div>
+
             {currentLabel && typeof currentIndex === "number" && total ? (
-                <div className="progress-current">
+                <div className={noPadding ? "card-text-content" : "progress-current"} style={noPadding ? { paddingTop: 0, paddingBottom: 10 } : {}}>
                     Procesando: <strong>{currentLabel}</strong> ({currentIndex + 1}/{total})
                 </div>
             ) : null}
+
             <ProgressTrack pct={pct} />
-            <div className="progress-caption">Progreso estimado: {pct}%</div>
+
+            <div className={noPadding ? "card-text-content" : "progress-caption"} style={noPadding ? { paddingTop: 10 } : {}}>
+                Progreso estimado: {pct}%
+            </div>
         </div>
     );
 };

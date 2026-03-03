@@ -120,6 +120,7 @@ export const TimesheetPage: React.FC = () => {
                         detail={vm.individualFile?.name || ""}
                         seconds={vm.individualElapsed}
                         pct={vm.individualProgressPct}
+                        noPadding={true}
                     />
                 )}
                 {vm.individualError && vm.processingMode === "Individual" && <div className="error-box">{vm.individualError}</div>}
@@ -192,6 +193,7 @@ export const TimesheetPage: React.FC = () => {
                                     errorColWidths={vm.errorColWidths}
                                     onResizeStart={vm.handleResizeStart}
                                     onDownload={vm.handleDownload}
+                                    noPadding={vm.processingMode === "Individual"}
                                 />
                             ))}
                         </div>

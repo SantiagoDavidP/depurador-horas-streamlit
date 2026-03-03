@@ -39,6 +39,10 @@ export const getProfiles = async (): Promise<Profile[]> => {
     const res = await fetch(`${baseUrl}/api/profiles`, {
         headers: await withAuth(),
     });
+    if (!res.ok) {
+        const detail = await parseErrorDetail(res, "Error obteniendo perfiles.");
+        throw new Error(detail);
+    }
     const data = await res.json();
     return data.profiles || [];
 };
