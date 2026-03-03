@@ -18,7 +18,7 @@ from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
-from backend.collaborator_rates import get_collaborator_rates_manager
+from backend.domain.rates.collaborator_rates import get_collaborator_rates_manager
 
 from .models import ConsultorMetrics, ConsolidatedReport
 from .styles import *
@@ -53,7 +53,12 @@ class LogoPathsMixin:
         # Regresar al comportamiento base: logo principal Business IT (logobit)
         preferred_names = ["logobit.png", "Logo.png", "logo.png"]
         for name in preferred_names:
-            for candidate in (module_dir / name, project_root / "frontend" / name, project_root / name):
+            for candidate in (
+                module_dir / name,
+                module_dir / "application" / name,
+                project_root / "frontend" / name,
+                project_root / name,
+            ):
                 if candidate.exists():
                     logger.info("Logo principal encontrado en: %s", candidate)
                     return candidate
@@ -61,6 +66,7 @@ class LogoPathsMixin:
         # Ubicaciones posibles
         possible_paths = [
             module_dir / "logobit.png",
+            module_dir / "application" / "logobit.png",
             project_root / "frontend" / "logo.png",
             project_root / "assets" / "logo.png",
             project_root / "logo.png",

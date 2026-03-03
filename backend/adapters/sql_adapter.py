@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import pyodbc
 
-from backend.excel_parser import ParsedSheet
+from backend.domain.parsing.excel_parser import ParsedSheet
 from backend.adapters import DataSourceAdapter, DataSourceConfig
 
 logger = logging.getLogger(__name__)

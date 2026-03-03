@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional, Protocol, Sequence
 
-from backend.batch_processor import BatchFileResult
+from backend.application.batch.batch_processor import BatchFileResult
 
 
 class FileStorePort(Protocol):

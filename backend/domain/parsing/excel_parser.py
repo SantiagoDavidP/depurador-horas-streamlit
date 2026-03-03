@@ -1,5 +1,5 @@
 from __future__ import annotations
-from backend.models import ColumnMapping
+from backend.domain.models import ColumnMapping
 import pandas as pd
 from typing import Optional
 from openpyxl import load_workbook  # <--- AGREGAR ESTO EN TUS IMPORTS

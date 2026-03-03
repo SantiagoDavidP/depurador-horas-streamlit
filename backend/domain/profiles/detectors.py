@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
-from backend.client_profiles import ClientProfile
+from backend.domain.profiles.client_profiles import ClientProfile
 
 _INVALID_NAME_TOKENS = {
     "actividades",

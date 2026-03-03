@@ -8,8 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
-from backend.excel_parser import ParsedSheet, load_sheet_with_header
-from backend.processor import ColumnMapping, ProcessorResult, TimeSheetProcessor
+from backend.domain.parsing.excel_parser import ParsedSheet, load_sheet_with_header
+from backend.domain.models import ColumnMapping
+from backend.application.processing.models import ProcessorResult
+from backend.application.processing.service import TimeSheetProcessor
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from backend.llm_corrector import CorrectionResult
-from backend.validators import ValidationIssue
+from backend.infrastructure.ai.llm_corrector import CorrectionResult
+from backend.domain.validation.validators import ValidationIssue
 
 
 @dataclass

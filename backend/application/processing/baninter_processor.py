@@ -8,9 +8,9 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from backend.excel_parser import load_sheet_with_header
-from backend.models import ColumnMapping
-from backend.validators import _coerce_hours_series
+from backend.domain.parsing.excel_parser import load_sheet_with_header
+from backend.domain.models import ColumnMapping
+from backend.domain.validation.validators import _coerce_hours_series
 
 logger = logging.getLogger(__name__)
 

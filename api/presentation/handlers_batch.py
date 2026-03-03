@@ -15,14 +15,14 @@ from api.services import (
     infer_client_name_from_results,
     is_baninter_result,
 )
-from backend.batch_processor import BatchFileRequest
-from backend.client_profiles import ClientProfile
-from backend.consolidator_integration import (
+from backend.application.batch.batch_processor import BatchFileRequest
+from backend.domain.profiles.client_profiles import ClientProfile
+from backend.application.consolidation.consolidator_integration import (
     generate_consolidated_from_batch_results,
     validate_batch_results_for_consolidation,
 )
-from backend.excel_parser import infer_column_mapping, load_sheet_with_header
-from backend.models import ColumnMapping
+from backend.domain.parsing.excel_parser import infer_column_mapping, load_sheet_with_header
+from backend.domain.models import ColumnMapping
 
 from api.presentation.dependencies import auth_provider, batch_processor, file_store
 from api.presentation.handlers_common import (

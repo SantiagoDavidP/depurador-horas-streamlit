@@ -6,13 +6,13 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from backend.baninter_processor import prepare_baninter_dataframe
-from backend.data_cleaner import detect_and_remove_metadata_rows
-from backend.excel_parser import ParsedSheet
-from backend.models import ColumnMapping
-from backend.perf import PerfCollector
-from backend.profile_validations import run_profile_validations
-from backend.validators import ValidationIssue, run_all_validations, validate_mapping
+from backend.application.processing.baninter_processor import prepare_baninter_dataframe
+from backend.application.processing.data_cleaner import detect_and_remove_metadata_rows
+from backend.domain.parsing.excel_parser import ParsedSheet
+from backend.domain.models import ColumnMapping
+from backend.infrastructure.observability.perf import PerfCollector
+from backend.domain.profiles.profile_validations import run_profile_validations
+from backend.domain.validation.validators import ValidationIssue, run_all_validations, validate_mapping
 from backend.infrastructure.storage.azure_blob_storage_adapter import AzureBlobStorageAdapter
 
 from .models import ProcessorResult

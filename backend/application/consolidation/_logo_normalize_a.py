@@ -18,7 +18,7 @@ from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
-from backend.collaborator_rates import get_collaborator_rates_manager
+from backend.domain.rates.collaborator_rates import get_collaborator_rates_manager
 
 from .models import ConsultorMetrics, ConsolidatedReport
 from .styles import *

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, Sequence, Tuple
 
-from backend.llm_corrector import CorrectionResult
+from backend.infrastructure.ai.llm_corrector import CorrectionResult
 
 
 class LLMCorrectorPort(Protocol):
