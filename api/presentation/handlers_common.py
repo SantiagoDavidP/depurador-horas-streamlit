@@ -9,9 +9,9 @@ from api.serializers import (
     summary_to_dict,
 )
 from api.services import is_baninter_result, resolve_employee
-from backend.batch_processor import BatchFileResult
-from backend.consolidator_integration import generate_individual_business_it_excel
-from backend.models import ColumnMapping
+from backend.application.batch.batch_processor import BatchFileResult
+from backend.application.consolidation.consolidator_integration import generate_individual_business_it_excel
+from backend.domain.models import ColumnMapping
 
 from api.presentation.dependencies import file_store
 from api.presentation.parsing import compact_metadata as _compact_metadata

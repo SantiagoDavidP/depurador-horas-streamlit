@@ -1,0 +1,18 @@
+[run]
+source =
+    backend
+    api
+branch = True
+omit =
+    */tests/*
+    */__pycache__/*
+    frontend/*
+    react-frontend/*
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 2
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

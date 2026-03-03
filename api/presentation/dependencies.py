@@ -4,8 +4,8 @@ import threading
 
 from api.infrastructure.auth.azure_ad_user_auth_adapter import AzureADUserAuthAdapter
 from api.infrastructure.storage.in_memory_file_store_adapter import InMemoryFileStoreAdapter
-from backend.batch_processor import BatchProcessor
-from backend.processor import TimeSheetProcessor
+from backend.application.batch.batch_processor import BatchProcessor
+from backend.application.processing.service import TimeSheetProcessor
 
 processor = TimeSheetProcessor()
 batch_processor = BatchProcessor(processor)

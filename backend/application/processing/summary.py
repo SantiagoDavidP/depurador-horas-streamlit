@@ -6,8 +6,8 @@ from typing import List
 
 import pandas as pd
 
-from backend.models import ColumnMapping
-from backend.validators import ValidationIssue
+from backend.domain.models import ColumnMapping
+from backend.domain.validation.validators import ValidationIssue
 
 from .constants import _CRITICAL_ERROR_TYPES, _WARNING_ERROR_TYPES
 from .models import ProcessorSummary

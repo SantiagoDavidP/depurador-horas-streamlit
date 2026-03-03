@@ -6,13 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from backend.processor import ColumnMapping
+from backend.domain.models import ColumnMapping
 
 logger = logging.getLogger(__name__)
 
 
 def _default_profiles_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "config" / "client_profiles.json"
+    # Conserva la ruta original del repositorio: <repo>/config/client_profiles.json
+    return Path(__file__).resolve().parents[3] / "config" / "client_profiles.json"
 
 
 @dataclass

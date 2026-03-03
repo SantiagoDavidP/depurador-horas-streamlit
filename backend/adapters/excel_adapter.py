@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from backend.excel_parser import load_sheet_with_header, ParsedSheet
+from backend.domain.parsing.excel_parser import load_sheet_with_header, ParsedSheet
 from backend.adapters import DataSourceAdapter, DataSourceConfig
 
 logger = logging.getLogger(__name__)

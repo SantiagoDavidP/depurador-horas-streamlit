@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
-from backend.excel_parser import ParsedSheet
-from backend.llm_corrector import CorrectionResult, LLMCorrector
-from backend.models import ColumnMapping
-from backend.role_validator import RoleActivityValidator
+from backend.domain.parsing.excel_parser import ParsedSheet
+from backend.infrastructure.ai.llm_corrector import CorrectionResult, LLMCorrector
+from backend.domain.models import ColumnMapping
+from backend.domain.roles.role_validator import RoleActivityValidator
 from backend.application.ports.llm_corrector_port import LLMCorrectorPort
 from backend.infrastructure.ai.llm_corrector_adapter import LLMCorrectorAdapter
 

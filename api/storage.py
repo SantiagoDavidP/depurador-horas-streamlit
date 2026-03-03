@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence
 
-from backend.batch_processor import BatchFileResult
+from backend.application.batch.batch_processor import BatchFileResult
 
 
 @dataclass

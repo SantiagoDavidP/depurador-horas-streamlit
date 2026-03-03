@@ -13,8 +13,9 @@ from typing import List, Optional, Tuple, Dict, Any
 
 import pandas as pd
 
-from backend.batch_processor import BatchFileResult
-from backend.consolidator import ConsolidatedReport, TimeSheetConsolidator
+from backend.application.batch.batch_processor import BatchFileResult
+from backend.application.consolidation.models import ConsolidatedReport
+from backend.application.consolidation.service import TimeSheetConsolidator
 
 logger = logging.getLogger(__name__)
 

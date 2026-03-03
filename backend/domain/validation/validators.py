@@ -14,7 +14,7 @@ import pandas as pd
 import holidays
 from fuzzywuzzy import fuzz
 
-from backend.perf import PerfCollector
+from backend.infrastructure.observability.perf import PerfCollector
 
 logger = logging.getLogger(__name__)
 

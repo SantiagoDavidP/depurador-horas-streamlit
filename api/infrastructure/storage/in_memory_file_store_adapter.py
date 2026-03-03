@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from api.storage import get_batch, get_file, store_batch, store_file
-from backend.batch_processor import BatchFileResult
+from backend.application.batch.batch_processor import BatchFileResult
 
 
 class InMemoryFileStoreAdapter:

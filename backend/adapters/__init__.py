@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import pandas as pd
-from backend.excel_parser import ParsedSheet
+from backend.domain.parsing.excel_parser import ParsedSheet
 
 
 @dataclass

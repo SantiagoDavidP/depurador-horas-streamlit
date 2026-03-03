@@ -5,11 +5,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from backend.client_profiles import ClientProfile, ClientProfileManager
-from backend.collaborator_rates import get_collaborator_rates_manager
-from backend.detectors import auto_detect_profile as detect_profile_basic
-from backend.excel_parser import ParsedSheet, load_multiple_sheets
-from backend.models import ColumnMapping
+from backend.domain.profiles.client_profiles import ClientProfile, ClientProfileManager
+from backend.domain.rates.collaborator_rates import get_collaborator_rates_manager
+from backend.domain.profiles.detectors import auto_detect_profile as detect_profile_basic
+from backend.domain.parsing.excel_parser import ParsedSheet, load_multiple_sheets
+from backend.domain.models import ColumnMapping
 
 
 def get_profile_catalog() -> Dict[str, ClientProfile]:

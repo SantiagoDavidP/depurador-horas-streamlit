@@ -68,7 +68,7 @@ class LLMCorrector:
         self._llm_unavailable = False
         if enable_cache:
             try:
-                from backend.llm_cache import get_llm_cache
+                from backend.infrastructure.ai.llm_cache import get_llm_cache
                 self._cache = get_llm_cache()
                 logger.info("Caché de LLM habilitado")
             except ImportError:

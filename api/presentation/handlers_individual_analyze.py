@@ -6,7 +6,7 @@ from fastapi import Depends, File, UploadFile
 
 from api.serializers import sanitize_payload
 from api.services import auto_detect_profile_from_files, detect_area_from_names, get_profile_catalog
-from backend.excel_parser import load_multiple_sheets
+from backend.domain.parsing.excel_parser import load_multiple_sheets
 
 from api.presentation.dependencies import auth_provider
 from api.presentation.parsing import compact_metadata as _compact_metadata
