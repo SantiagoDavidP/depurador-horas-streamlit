@@ -7,7 +7,7 @@ import numbers
 import pandas as pd
 from fuzzywuzzy import fuzz
 
-from backend.validators import ValidationIssue
+from backend.domain.validation.validators import ValidationIssue
 
 
 def _resolve_column(df: pd.DataFrame, candidates: Sequence[str]) -> Optional[str]:

@@ -14,16 +14,18 @@ from backend.adapters import DataSourceConfig
 from backend.adapters.adapter_factory import create_adapter
 from backend.adapters.excel_adapter import ExcelAdapter
 from backend.adapters.sql_adapter import FabricSQLAdapter
-from backend.excel_parser import ParsedSheet
+from backend.domain.parsing.excel_parser import ParsedSheet
 
 
 # ============================================================================
 # Adapter Factory Tests
 # ============================================================================
 
-def test_create_adapter_excel():
+def test_create_adapter_excel(tmp_path):
     """Test creating Excel adapter from factory."""
-    adapter = create_adapter(source_type="excel", file_path="test.xlsx")
+    test_file = tmp_path / "test.xlsx"
+    test_file.touch()
+    adapter = create_adapter(source_type="excel", file_path=str(test_file))
     assert isinstance(adapter, ExcelAdapter)
 
 
@@ -62,9 +64,11 @@ def test_create_adapter_from_env_var():
 # Excel Adapter Tests
 # ============================================================================
 
-def test_excel_adapter_invalid_extension():
+def test_excel_adapter_invalid_extension(tmp_path):
     """Test Excel adapter rejects invalid file extensions."""
-    config = DataSourceConfig(source_type="excel", file_path="test.txt")
+    test_file = tmp_path / "test.txt"
+    test_file.touch()
+    config = DataSourceConfig(source_type="excel", file_path=str(test_file))
     
     with pytest.raises(ValueError, match="Invalid Excel file extension"):
         ExcelAdapter(config)
@@ -232,10 +236,10 @@ def test_sql_adapter_load_success():
         
         # Mock SQL query result
         mock_df = pd.DataFrame({
-            "date_column": [datetime(2024, 1, 1)],
-            "hours_column": [8.0],
-            "description_column": ["Test task"],
-            "project_column": ["Project A"],
+            "Fecha": [datetime(2024, 1, 1)],
+            "Horas": [8.0],
+            "Actividad": ["Test task"],
+            "Proyecto": ["Project A"],
             "role_column": ["Developer"],
             "employee_name": ["John Doe"],
             "company_name": ["Test Company"],
@@ -273,10 +277,10 @@ def test_sql_adapter_normalize_columns():
         adapter = FabricSQLAdapter(config)
         
         df = pd.DataFrame({
-            "date_column": [datetime(2024, 1, 1)],
-            "hours_column": [8.0],
-            "description_column": ["Test"],
-            "project_column": ["ProjectA"]
+            "Fecha": [datetime(2024, 1, 1)],
+            "Horas": [8.0],
+            "Actividad": ["Test"],
+            "Proyecto": ["ProjectA"]
         })
         
         normalized = adapter._normalize_columns(df)
@@ -299,7 +303,7 @@ def test_sql_adapter_normalize_columns_missing_required():
         adapter = FabricSQLAdapter(config)
         
         df = pd.DataFrame({
-            "date_column": [datetime(2024, 1, 1)],
+            "Fecha": [datetime(2024, 1, 1)],
             # Missing hours_column and description_column
         })
         

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from backend.perf import PerfCollector
+from backend.infrastructure.observability.perf import PerfCollector
 
 logger = logging.getLogger(__name__)
 

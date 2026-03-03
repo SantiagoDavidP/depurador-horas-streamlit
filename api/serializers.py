@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from backend.holiday_detector import HolidayDetector
+from backend.domain.calendar.holiday_detector import HolidayDetector
 
 
 _ERROR_PRIORITY = [

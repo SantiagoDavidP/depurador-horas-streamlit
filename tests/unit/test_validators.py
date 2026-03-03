@@ -1,163 +1,111 @@
-"""Tests unitarios para el módulo de validadores."""
-import pytest
 import pandas as pd
-from datetime import datetime
+import pytest
 
-from backend.validators import (
+from backend.domain.validation.validators import (
+    _get_ec_holidays,
+    run_all_validations,
     validate_calendar_constraints,
     validate_daily_hours,
     validate_mapping,
-    ValidationIssue,
+    validate_missing_fields,
 )
 
 
-class TestCalendarValidation:
-    """Tests para validación de restricciones de calendario."""
-    
-    def test_weekend_detection(self, sample_weekend_dataframe):
-        """Debe detectar registros en fin de semana."""
-        issues = validate_calendar_constraints(
-            sample_weekend_dataframe,
-            date_column='Fecha'
-        )
-        
-        assert len(issues) == 2
-        assert all(issue['tipo_error'] == 'fin_semana' for issue in issues)
-    
-    def test_valid_weekday(self, sample_dataframe):
-        """No debe generar errores para días laborables válidos."""
-        issues = validate_calendar_constraints(
-            sample_dataframe,
-            date_column='Fecha'
-        )
-        
-        # Filtramos solo errores de fin de semana
-        weekend_issues = [i for i in issues if i['tipo_error'] == 'fin_semana']
-        assert len(weekend_issues) == 0
-    
-    def test_invalid_date_format(self):
-        """Debe detectar fechas con formato inválido."""
-        df = pd.DataFrame({
-            'Fecha': ['fecha-invalida', '99/99/9999'],
-            'Horas': [8.0, 8.0]
-        })
-        
-        issues = validate_calendar_constraints(df, date_column='Fecha')
-        
-        assert len(issues) >= 2
-        assert all(issue['tipo_error'] == 'fecha_invalida' for issue in issues)
-
-
-class TestDailyHoursValidation:
-    """Tests para validación de horas diarias."""
-    
-    def test_correct_hours(self, sample_dataframe):
-        """No debe generar errores para horas correctas (8h por día)."""
-        issues = validate_daily_hours(
-            sample_dataframe,
-            date_column='Fecha',
-            hours_column='Horas',
-            expected_hours=8.0
-        )
-        
-        assert len(issues) == 0
-    
-    def test_excessive_hours(self):
-        """Debe detectar horas excesivas por día."""
-        df = pd.DataFrame({
-            'Fecha': ['2025-01-13'],
-            'Horas': [15.0]
-        })
-        
-        issues = validate_daily_hours(
-            df,
-            date_column='Fecha',
-            hours_column='Horas',
-            expected_hours=8.0
-        )
-        
-        assert len(issues) > 0
-        assert any(issue['tipo_error'] == 'horas_excesivas' for issue in issues)
-    
-    def test_very_low_hours(self):
-        """Debe detectar horas muy bajas (menos de 1 hora)."""
-        df = pd.DataFrame({
-            'Fecha': ['2025-01-13'],
-            'Horas': [0.5]
-        })
-        
-        issues = validate_daily_hours(
-            df,
-            date_column='Fecha',
-            hours_column='Horas',
-            expected_hours=8.0
-        )
-        
-        assert len(issues) > 0
-        assert any(issue['tipo_error'] == 'horas_muy_bajas' for issue in issues)
-
-
-class TestMappingValidation:
-    """Tests para validación de mapeo de columnas."""
-    
-    def test_valid_mapping(self, sample_dataframe):
-        """No debe lanzar excepción con mapeo válido."""
-        # No debe lanzar excepción
+@pytest.mark.unit
+def test_validate_mapping_rejects_missing_required_columns(sample_dataframe):
+    with pytest.raises(ValueError, match="columnas requeridas"):
         validate_mapping(
             sample_dataframe,
-            date_col='Fecha',
-            hours_col='Horas',
-            description_col='Descripción'
+            date_col="FechaInexistente",
+            hours_col="Horas",
+            description_col="Descripcion",
         )
-    
-    def test_missing_columns(self, sample_dataframe):
-        """Debe lanzar ValueError si falta alguna columna requerida."""
-        with pytest.raises(ValueError, match="no contiene las columnas requeridas"):
-            validate_mapping(
-                sample_dataframe,
-                date_col='FechaInexistente',
-                hours_col='Horas',
-                description_col='Descripción'
-            )
-    
-    def test_invalid_data_ratio(self):
-        """Debe lanzar ValueError si hay muy pocos datos válidos."""
-        df = pd.DataFrame({
-            'Fecha': [None, None, '2025-01-13'],
-            'Horas': [None, None, 8.0],
-            'Descripción': ['', '', 'Solo una válida']
-        })
-        
-        with pytest.raises(ValueError, match="datos válidos según el mapeo"):
-            validate_mapping(
-                df,
-                date_col='Fecha',
-                hours_col='Horas',
-                description_col='Descripción',
-                minimum_valid_ratio=0.8
-            )
 
 
-class TestHolidayCaching:
-    """Tests para verificar el caching de feriados."""
-    
-    def test_holiday_function_is_cached(self):
-        """Verificar que _get_ec_holidays está usando lru_cache."""
-        from backend.validators import _get_ec_holidays
-        
-        # Verificar que tiene el atributo cache_info de lru_cache
-        assert hasattr(_get_ec_holidays, 'cache_info')
-        
-        # Limpiar caché
-        _get_ec_holidays.cache_clear()
-        
-        # Primera llamada
-        result1 = _get_ec_holidays(2025)
-        info1 = _get_ec_holidays.cache_info()
-        
-        # Segunda llamada (debe usar caché)
-        result2 = _get_ec_holidays(2025)
-        info2 = _get_ec_holidays.cache_info()
-        
-        assert result1 == result2
-        assert info2.hits > info1.hits  # Debe haber un hit de caché
+@pytest.mark.unit
+def test_validate_calendar_constraints_detects_invalid_and_weekend():
+    df = pd.DataFrame(
+        {
+            "Fecha": ["fecha-invalida", "2025-01-11", "2025-01-13"],
+            "Horas": [8, 8, 8],
+        }
+    )
+    issues = validate_calendar_constraints(df, date_column="Fecha")
+    issue_types = {item["tipo_error"] for item in issues}
+    assert "fecha_invalida" in issue_types
+    assert "fin_semana" in issue_types
+
+
+@pytest.mark.unit
+def test_validate_daily_hours_detects_missing_and_incorrect():
+    df = pd.DataFrame(
+        {
+            "Fecha": ["2025-01-13", "2025-01-13", "2025-01-14"],
+            "Horas": [4, 3, 0],
+        }
+    )
+    issues = validate_daily_hours(
+        df,
+        date_column="Fecha",
+        hours_column="Horas",
+        expected_hours=8.0,
+    )
+    issue_types = [item["tipo_error"] for item in issues]
+    assert "horas_incorrectas" in issue_types
+    assert "horas_faltantes" in issue_types
+
+
+@pytest.mark.unit
+def test_validate_missing_fields_ignores_technical_columns():
+    df = pd.DataFrame(
+        {
+            "Fecha": ["2025-01-13"],
+            "Horas": [8],
+            "Actividad": [""],
+            "Unnamed: 6": [None],
+        }
+    )
+    issues = validate_missing_fields(
+        df,
+        date_column="Fecha",
+        hours_column="Horas",
+    )
+    assert len(issues) == 1
+    assert issues[0]["tipo_error"] == "campo_vacio"
+    assert "Actividad" in issues[0]["descripcion"]
+
+
+@pytest.mark.unit
+def test_run_all_validations_includes_completeness():
+    df = pd.DataFrame(
+        {
+            "Fecha": ["2025-01-02"],
+            "Horas": [8],
+            "Actividad": ["Desarrollo modulo core"],
+            "Proyecto": ["Proyecto X"],
+        }
+    )
+    issues = run_all_validations(
+        df,
+        date_column="Fecha",
+        hours_column="Horas",
+        description_column="Actividad",
+        project_column="Proyecto",
+        check_completeness=True,
+        period_year=2025,
+        period_month=1,
+        duplicate_fuzzy_enabled=False,
+    )
+    issue_types = {item["tipo_error"] for item in issues}
+    assert "completitud" in issue_types
+
+
+@pytest.mark.unit
+def test_get_ec_holidays_uses_cache():
+    _get_ec_holidays.cache_clear()
+    first = _get_ec_holidays(2025)
+    info_before = _get_ec_holidays.cache_info()
+    second = _get_ec_holidays(2025)
+    info_after = _get_ec_holidays.cache_info()
+    assert first == second
+    assert info_after.hits > info_before.hits

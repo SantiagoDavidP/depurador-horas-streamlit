@@ -1,7 +1,10 @@
 import pandas as pd
 
-from backend.baninter_processor import prepare_baninter_dataframe, BANINTER_PHASE_COLUMN
-from backend.models import ColumnMapping
+from backend.application.processing.baninter_processor import (
+    BANINTER_PHASE_COLUMN,
+    prepare_baninter_dataframe,
+)
+from backend.domain.models import ColumnMapping
 
 
 def test_baninter_schema_drops_extra_columns():

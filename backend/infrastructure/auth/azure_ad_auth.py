@@ -208,7 +208,7 @@ def require_authentication() -> Tuple[bool, Optional[Dict]]:
         
     Example:
         ```python
-        from backend.azure_ad_auth import require_authentication
+        from backend.infrastructure.auth.azure_ad_auth import require_authentication
         
         authenticated, user_info = require_authentication()
         if not authenticated:

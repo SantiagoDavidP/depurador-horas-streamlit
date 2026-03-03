@@ -81,7 +81,8 @@ class CollaboratorRatesManager:
     
     def _default_config_path(self) -> Path:
         """Get default path to collaborator_rates.json."""
-        return Path(__file__).resolve().parent.parent / "config" / "collaborator_rates.json"
+        # Conserva la ruta original del repositorio: <repo>/config/collaborator_rates.json
+        return Path(__file__).resolve().parents[3] / "config" / "collaborator_rates.json"
     
     def _load_config(self):
         """Load collaborator rates from JSON file."""

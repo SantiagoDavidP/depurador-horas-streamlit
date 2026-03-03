@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend import azure_storage
+from backend.infrastructure.storage import azure_storage
 
 
 class AzureBlobStorageAdapter:

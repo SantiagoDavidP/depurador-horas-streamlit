@@ -9,10 +9,10 @@ from fastapi import Depends, File, Form, HTTPException, UploadFile
 
 from api.serializers import sanitize_payload
 from api.services import auto_detect_profile_from_files, get_profile_catalog, is_baninter_result
-from backend.batch_processor import BatchFileResult
-from backend.consolidator_integration import generate_consolidated_from_batch_results
-from backend.excel_parser import infer_column_mapping, load_multiple_sheets
-from backend.models import ColumnMapping
+from backend.application.batch.batch_processor import BatchFileResult
+from backend.application.consolidation.consolidator_integration import generate_consolidated_from_batch_results
+from backend.domain.parsing.excel_parser import infer_column_mapping, load_multiple_sheets
+from backend.domain.models import ColumnMapping
 
 from api.presentation.dependencies import (
     auth_provider,
