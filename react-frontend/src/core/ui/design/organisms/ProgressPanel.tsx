@@ -58,7 +58,13 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({
                 </div>
             ) : null}
 
-            <ProgressTrack pct={pct} />
+            {noPadding ? (
+                <div className="progress-track-wrapper">
+                    <ProgressTrack pct={pct} />
+                </div>
+            ) : (
+                <ProgressTrack pct={pct} />
+            )}
 
             <div className={noPadding ? "card-text-content" : "progress-caption"} style={noPadding ? { paddingTop: 10 } : {}}>
                 Progreso estimado: {pct}%
