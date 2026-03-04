@@ -1,6 +1,5 @@
 import React from "react";
 import { Typography } from "../atoms/Typography";
-import { InfoItem } from "../molecules/InfoItem";
 import { ThemeSwitch } from "../molecules/ThemeSwitch";
 
 interface SidebarProps {
@@ -8,17 +7,17 @@ interface SidebarProps {
     onThemeToggle: (isDark: boolean) => void;
     processingMode: "Individual" | "Por lotes";
     onModeChange: (mode: "Individual" | "Por lotes") => void;
-    volumeLabel: string;
-    statusLabel: string;
-    userInfo?: { name?: string; preferred_username?: string };
+    userInfo?: { name?: string; preferred_username?: string; displayName?: string; mail?: string; userPrincipalName?: string };
     children?: React.ReactNode;
 }
 
 export const MainLayout: React.FC<{
     sidebar: SidebarProps;
     children: React.ReactNode;
-    headerTitle: string;
-}> = ({ sidebar, children, headerTitle }) => {
+    volumeLabel: string;
+    statusLabel: string;
+    aiEnabled: boolean;
+}> = ({ sidebar, children, volumeLabel, statusLabel, aiEnabled }) => {
     return (
         <div className={`app ${sidebar.theme === "dark" ? "theme-dark" : ""}`}>
             <aside className="sidebar">
@@ -44,7 +43,7 @@ export const MainLayout: React.FC<{
                     <Typography variant="h3" style={{ marginBottom: 8 }}>Configuración</Typography>
                     <Typography variant="label">Modo</Typography>
                     <div className="flex">
-                        <label>
+                        <label className="flex">
                             <input
                                 type="radio"
                                 name="mode"
@@ -53,7 +52,7 @@ export const MainLayout: React.FC<{
                             />
                             Individual
                         </label>
-                        <label style={{ marginLeft: 16 }}>
+                        <label className="flex" style={{ marginLeft: 16 }}>
                             <input
                                 type="radio"
                                 name="mode"
@@ -65,20 +64,17 @@ export const MainLayout: React.FC<{
                     </div>
                 </div>
 
-                <div className="sidebar-section">
-                    <Typography variant="h3" style={{ marginBottom: 8 }}>Estado</Typography>
-                    <div className="info-grid">
-                        <InfoItem label="Volumen" value={sidebar.volumeLabel} />
-                        <InfoItem label="Carga" value={sidebar.statusLabel} />
-                    </div>
-                </div>
-
                 {sidebar.children}
 
                 {sidebar.userInfo && (
                     <div className="sidebar-section" style={{ marginTop: "auto" }}>
-                        <div className="info-value" style={{ fontSize: 13, opacity: 0.7 }}>
-                            {String(sidebar.userInfo.name || sidebar.userInfo.preferred_username || "")}
+                        <div className="brand-divider" style={{ marginBottom: 12 }} />
+                        <Typography variant="h3">Usuario</Typography>
+                        <div className="info-value" style={{ fontWeight: 600 }}>
+                            {sidebar.userInfo.displayName || sidebar.userInfo.name || "Usuario"}
+                        </div>
+                        <div className="small" style={{ opacity: 0.7 }}>
+                            {sidebar.userInfo.mail || sidebar.userInfo.userPrincipalName || ""}
                         </div>
                     </div>
                 )}
@@ -86,9 +82,32 @@ export const MainLayout: React.FC<{
 
             <main className="main-content main">
                 <header className="header">
-                    <Typography variant="gradient">{headerTitle}</Typography>
-                    <div className="flex" style={{ gap: 12 }}>
-                        {/* Header Actions */}
+                    <div className="header-brand">
+                        <div className="header-accent" aria-hidden="true" />
+                        <div>
+                            <div className="header-eyebrow">Business IT · Nova Analytics</div>
+                            <h1 className="gradient-title">Depurador de Horas</h1>
+                            <p className="header-subtitle">Valida y depura registros de timesheet automáticamente</p>
+                        </div>
+                    </div>
+                    <div className="header-status">
+                        <div className="status-pill">
+                            <span className="status-label-inline">Modo</span>
+                            <span className="status-value-inline">{sidebar.processingMode}</span>
+                        </div>
+                        <div className="status-pill">
+                            <span className="status-label-inline">IA</span>
+                            <span className="status-value-inline">
+                                <span className={`status-dot ${aiEnabled ? "on" : "off"}`} />
+                                {aiEnabled ? "Activa" : "Inactiva"}
+                            </span>
+                        </div>
+                        <div className="status-pill">
+                            <span className="status-label-inline">Carga</span>
+                            <span className="status-value-inline">
+                                {volumeLabel} · {statusLabel}
+                            </span>
+                        </div>
                     </div>
                 </header>
 
@@ -97,3 +116,4 @@ export const MainLayout: React.FC<{
         </div>
     );
 };
+

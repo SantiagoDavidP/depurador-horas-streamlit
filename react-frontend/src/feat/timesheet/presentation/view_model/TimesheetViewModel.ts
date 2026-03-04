@@ -431,6 +431,8 @@ export const useTimesheetViewModel = () => {
                     ? "Listo"
                     : "Sin carga";
 
+    const [showTimeSuggestions, setShowTimeSuggestions] = useState(true);
+
     return {
         theme,
         toggleTheme,
@@ -472,6 +474,8 @@ export const useTimesheetViewModel = () => {
         setMinDuplicates,
         hoursTolerance,
         setHoursTolerance,
+        showTimeSuggestions,
+        setShowTimeSuggestions,
         individualFile,
         setIndividualFile,
         individualAnalysis,
@@ -504,4 +508,5 @@ export const useTimesheetViewModel = () => {
         volumeLabel,
         statusLabel,
     };
+
 };

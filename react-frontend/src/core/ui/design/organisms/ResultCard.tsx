@@ -83,18 +83,16 @@ export const ResultCard: React.FC<ResultCardProps> = ({
             </div>
 
             {metadataItems.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                    <details className="expander">
-                        <summary>Metadata</summary>
-                        <div className="expander-content">
-                            <div className="info-grid">
-                                {metadataItems.map((item) => (
-                                    <InfoItem key={item.label} label={item.label} value={item.value} />
-                                ))}
-                            </div>
+                <details className="expander" style={!noPadding ? { marginTop: 12 } : {}}>
+                    <summary>Metadata</summary>
+                    <div className="expander-content">
+                        <div className="info-grid">
+                            {metadataItems.map((item) => (
+                                <InfoItem key={item.label} label={item.label} value={item.value} />
+                            ))}
                         </div>
-                    </details>
-                </div>
+                    </div>
+                </details>
             )}
 
             {summary && (
@@ -117,33 +115,31 @@ export const ResultCard: React.FC<ResultCardProps> = ({
             )}
 
             {baninterReport && (
-                <div style={{ marginTop: 12 }}>
-                    <details className="expander">
-                        <summary>BANINTER - Imputaciones</summary>
-                        <div className="expander-content">
-                            <p>
-                                Columnas de interes faltantes:{" "}
-                                {Array.isArray(baninterReport.missing_optional_columns) &&
-                                    baninterReport.missing_optional_columns.length > 0
-                                    ? baninterReport.missing_optional_columns.join(", ")
-                                    : "Ninguna"}
-                            </p>
-                            <p>
-                                Imputaciones: Fecha={baninterReport.filled_fecha ?? 0}, Proyecto={baninterReport.filled_proyecto ?? 0}, Fase={baninterReport.filled_fase ?? 0}
-                            </p>
-                            <p>
-                                Filas validas: antes={baninterReport.valid_before ?? 0} ({Math.round((baninterReport.coverage_before ?? 0) * 100)}%), despues={baninterReport.valid_after ?? 0} ({Math.round((baninterReport.coverage_after ?? 0) * 100)}%)
-                            </p>
-                            {Array.isArray(baninterReport.warnings) && baninterReport.warnings.length > 0 && (
-                                <ul>
-                                    {baninterReport.warnings.map((w: string, idx: number) => (
-                                        <li key={idx}>{w}</li>
-                                    ))}
-                                </ul>
-                            )}
-                        </div>
-                    </details>
-                </div>
+                <details className="expander" style={!noPadding ? { marginTop: 12 } : {}}>
+                    <summary>BANINTER - Imputaciones</summary>
+                    <div className="expander-content">
+                        <p>
+                            Columnas de interes faltantes:{" "}
+                            {Array.isArray(baninterReport.missing_optional_columns) &&
+                                baninterReport.missing_optional_columns.length > 0
+                                ? baninterReport.missing_optional_columns.join(", ")
+                                : "Ninguna"}
+                        </p>
+                        <p>
+                            Imputaciones: Fecha={baninterReport.filled_fecha ?? 0}, Proyecto={baninterReport.filled_proyecto ?? 0}, Fase={baninterReport.filled_fase ?? 0}
+                        </p>
+                        <p>
+                            Filas validas: antes={baninterReport.valid_before ?? 0} ({Math.round((baninterReport.coverage_before ?? 0) * 100)}%), despues={baninterReport.valid_after ?? 0} ({Math.round((baninterReport.coverage_after ?? 0) * 100)}%)
+                        </p>
+                        {Array.isArray(baninterReport.warnings) && baninterReport.warnings.length > 0 && (
+                            <ul style={{ paddingLeft: 20 }}>
+                                {baninterReport.warnings.map((w: string, idx: number) => (
+                                    <li key={idx}>{w}</li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </details>
             )}
 
             <div className={noPadding ? "card-text-content" : ""}>
@@ -170,19 +166,22 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 )}
             </div>
 
-            <div style={{ marginTop: 12 }}>
-                <details className="expander">
-                    <summary>Errores detectados ({result.errors?.length || 0})</summary>
-                    <div className="expander-content">
-                        <ErrorsTable
-                            errors={result.errors}
-                            errorColWidths={errorColWidths}
-                            onResizeStart={onResizeStart}
-                        />
-                    </div>
-                </details>
-            </div>
-            <div style={{ marginTop: 12 }}>{renderHoliday(result.holiday_info)}</div>
+            <details className="expander" style={!noPadding ? { marginTop: 12 } : {}}>
+                <summary>Errores detectados ({result.errors?.length || 0})</summary>
+                <div className="expander-content">
+                    <ErrorsTable
+                        errors={result.errors}
+                        errorColWidths={errorColWidths}
+                        onResizeStart={onResizeStart}
+                    />
+                </div>
+            </details>
+            {result.holiday_info && (
+                <div className={noPadding ? "" : ""} style={!noPadding ? { marginTop: 12 } : {}}>
+                    {renderHoliday(result.holiday_info)}
+                </div>
+            )}
         </div>
     );
+
 };
