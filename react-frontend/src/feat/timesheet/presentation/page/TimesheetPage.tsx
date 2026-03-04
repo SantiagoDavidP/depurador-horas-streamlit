@@ -14,6 +14,14 @@ import { ProgressPanel } from "../../../../core/ui/design/organisms/ProgressPane
 import { FileUploader } from "../../../../core/ui/design/organisms/FileUploader";
 import { ResultCard } from "../../../../core/ui/design/organisms/ResultCard";
 
+const formatBytes = (bytes: number) => {
+    if (!bytes) return "0 KB";
+    const units = ["B", "KB", "MB", "GB"];
+    const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const value = bytes / Math.pow(1024, idx);
+    return `${value.toFixed(value >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
+};
+
 export const TimesheetPage: React.FC = () => {
     const vm = useTimesheetViewModel();
 
@@ -385,12 +393,43 @@ export const TimesheetPage: React.FC = () => {
                                 detail={`Analizando ${vm.individualAnalysis?.employee_count || 1} consultor(es).`}
                                 seconds={vm.individualElapsed}
                                 pct={vm.individualProgressPct}
+                                currentLabel={(() => {
+                                    const sheets = vm.individualAnalysis?.sheets || [];
+                                    const total = sheets.length || vm.individualAnalysis?.employee_count || 1;
+                                    const expected = Math.max(10, total * 8);
+                                    const ratio = Math.min(0.99, vm.individualElapsed / expected);
+                                    const idx = Math.min(total - 1, Math.floor(ratio * total));
+                                    if (sheets[idx]?.sheet_name) return sheets[idx].sheet_name;
+                                    return `Consultor ${idx + 1}`;
+                                })()}
+                                currentIndex={(() => {
+                                    const sheets = vm.individualAnalysis?.sheets || [];
+                                    const total = sheets.length || vm.individualAnalysis?.employee_count || 1;
+                                    const expected = Math.max(10, total * 8);
+                                    const ratio = Math.min(0.99, vm.individualElapsed / expected);
+                                    return Math.min(total - 1, Math.floor(ratio * total));
+                                })()}
+                                total={vm.individualAnalysis?.sheets?.length || vm.individualAnalysis?.employee_count || 1}
                             />
                         )}
                         {vm.individualError && <div className="status-card error" style={{ marginTop: 16 }}>{vm.individualError}</div>}
 
                         {vm.individualResults.length > 0 && (
                             <div style={{ marginTop: 24 }}>
+                                {vm.individualSkipped.length > 0 && (
+                                    <details className="expander" style={{ marginBottom: 16 }}>
+                                        <summary>Hojas ignoradas ({vm.individualSkipped.length})</summary>
+                                        <div className="expander-content">
+                                            <ul>
+                                                {vm.individualSkipped.map((item, idx) => (
+                                                    <li key={idx} className="small">
+                                                        <strong>{item.name}</strong> - Columnas: {item.columns.join(", ")}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </details>
+                                )}
                                 <Typography variant="h2">Detalle Individual</Typography>
                                 {vm.individualResults.map((res, i) => (
                                     <ResultCard
@@ -456,6 +495,38 @@ export const TimesheetPage: React.FC = () => {
                     </>
                 ) : (
                     <>
+                        {vm.batchFiles.length > 0 && (
+                            <details className="expander" style={{ marginBottom: 20 }}>
+                                <summary>Archivos cargados ({vm.batchFiles.length})</summary>
+                                <div className="expander-content">
+                                    <div className="file-panel" style={{ marginTop: 0 }}>
+                                        <div className="file-panel-head">
+                                            <div className="small">Lista de archivos</div>
+                                            <button className="btn btn-ghost btn-xs" onClick={vm.handleClearBatchFiles}>
+                                                Limpiar todo
+                                            </button>
+                                        </div>
+                                        <div className="file-list">
+                                            {vm.batchFiles.map((file, idx) => (
+                                                <div className="file-row" key={`${file.name}-${idx}`}>
+                                                    <div className="file-meta">
+                                                        <div className="file-name">{file.name}</div>
+                                                        <div className="file-size">{formatBytes(file.size)}</div>
+                                                    </div>
+                                                    <button
+                                                        className="btn btn-ghost btn-xs"
+                                                        onClick={() => vm.handleRemoveBatchFile(idx)}
+                                                    >
+                                                        Quitar
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        )}
+
                         {vm.batchFiles.length === 0 && (
                             <div className="empty-state">
                                 <div className="empty-title">Listo para procesar cuando tú también lo estés</div>
@@ -481,6 +552,20 @@ export const TimesheetPage: React.FC = () => {
                                 detail={`Procesando ${vm.batchFiles.length} archivo(s).`}
                                 seconds={vm.batchElapsed}
                                 pct={vm.batchProgressPct}
+                                currentLabel={(() => {
+                                    const total = vm.batchFiles.length || 1;
+                                    const expected = Math.max(12, total * 8);
+                                    const ratio = Math.min(0.99, vm.batchElapsed / expected);
+                                    const idx = Math.min(total - 1, Math.floor(ratio * total));
+                                    return vm.batchFiles[idx]?.name || `Archivo ${idx + 1}`;
+                                })()}
+                                currentIndex={(() => {
+                                    const total = vm.batchFiles.length || 1;
+                                    const expected = Math.max(12, total * 8);
+                                    const ratio = Math.min(0.99, vm.batchElapsed / expected);
+                                    return Math.min(total - 1, Math.floor(ratio * total));
+                                })()}
+                                total={vm.batchFiles.length || 1}
                             />
                         )}
                         {vm.batchError && <div className="status-card error" style={{ marginTop: 16 }}>{vm.batchError}</div>}
