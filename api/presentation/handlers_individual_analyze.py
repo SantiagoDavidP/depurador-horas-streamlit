@@ -6,7 +6,8 @@ from fastapi import Depends, File, UploadFile
 
 from api.serializers import sanitize_payload
 from api.services import auto_detect_profile_from_files, detect_area_from_names, get_profile_catalog
-from backend.domain.parsing.excel_parser import load_multiple_sheets
+from backend.infrastructure.parsing.excel_sheet_parser import load_multiple_sheets
+from backend.shared.tabular.pandas_mapper import to_pandas_table
 
 from api.presentation.dependencies import auth_provider
 from api.presentation.parsing import compact_metadata as _compact_metadata
@@ -66,7 +67,7 @@ def analyze_individual(
 
     sheet_payload = []
     for sheet in sheets:
-        df = sheet.dataframe
+        df = to_pandas_table(sheet.dataframe)
         safe_meta = _compact_metadata(sheet.metadata)
         sheet_payload.append(
             {

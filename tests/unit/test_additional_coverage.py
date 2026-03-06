@@ -8,19 +8,19 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill
 
 from backend.application.processing.debug_views import ProcessingDebugViewsMixin
-from backend.application.processing.excel_export import ProcessingExcelExportMixin
 from backend.application.processing.models import ProcessorSummary
 from backend.application.processing.normalization import ProcessingNormalizationMixin, _safe_string
-from backend.application.consolidation.service import TimeSheetConsolidator
 from backend.domain.models import ColumnMapping
 from backend.infrastructure.auth import azure_ad_auth
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.export.excel_workbook_exporter import ExcelWorkbookExporter
 from backend.infrastructure.health import health
+from backend.infrastructure.reporting.consolidation.service import TimeSheetConsolidator
 
 
 class _DummyProcessor(
     ProcessingNormalizationMixin,
     ProcessingDebugViewsMixin,
-    ProcessingExcelExportMixin,
 ):
     pass
 
@@ -63,9 +63,11 @@ def test_protocol_modules_importable():
     m1 = importlib.import_module("api.application.ports.file_store_port")
     m2 = importlib.import_module("api.application.ports.user_auth_port")
     m3 = importlib.import_module("backend.application.ports.blob_storage_port")
+    m4 = importlib.import_module("backend.application.ports.workbook_export_port")
     assert hasattr(m1, "FileStorePort")
     assert hasattr(m2, "UserAuthPort")
     assert hasattr(m3, "BlobStoragePort")
+    assert hasattr(m4, "WorkbookExportPort")
 
 
 def test_processing_mixins_normalization_debug_and_export():
@@ -119,7 +121,11 @@ def test_processing_mixins_normalization_debug_and_export():
         quality_score=65.0,
         ai_summary={"diagnostico": "x", "acciones": ["a1", "a2"], "tiempo_estimado": "15 min"},
     )
-    workbook_bytes = helper._export_workbook(df, pd.DataFrame([{"tipo_error": "horas_incorrectas"}]), summary)
+    workbook_bytes = ExcelWorkbookExporter().export_workbook(
+        df,
+        pd.DataFrame([{"tipo_error": "horas_incorrectas"}]),
+        summary,
+    )
     assert len(workbook_bytes) > 100
 
     assert _safe_string(None) == ""
@@ -133,7 +139,10 @@ def test_postprocess_helpers_and_logo_anchor_paths(tmp_path):
         b"\x00\x02\x00\x01\xe2!\xbc3\x00\x00\x00\x00IEND\xaeB`\x82"
     )
 
-    c = TimeSheetConsolidator(cliente="NOVA - TI")
+    c = TimeSheetConsolidator(
+        cliente="NOVA - TI",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
     ws = Workbook().active
     ws.title = "Demo"
     ws.merge_cells("A1:H1")

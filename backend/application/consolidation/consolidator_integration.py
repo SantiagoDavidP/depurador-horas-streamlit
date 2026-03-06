@@ -11,11 +11,12 @@ from __future__ import annotations
 import logging
 from typing import List, Optional, Tuple, Dict, Any
 
-import pandas as pd
-
 from backend.application.batch.batch_processor import BatchFileResult
+from backend.application.ports.collaborator_rates_port import CollaboratorRatesPort
 from backend.application.consolidation.models import ConsolidatedReport
-from backend.application.consolidation.service import TimeSheetConsolidator
+from backend.application.ports.timesheet_reporting_port import TimesheetReportingPort
+from backend.application.tabular.table_data import TableData
+from backend.shared.tabular.pandas_mapper import from_pandas_table, to_pandas_table
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ def generate_consolidated_from_batch_results(
     batch_results: List[BatchFileResult],
     cliente: str = "NOVA - TI",
     output_filename: Optional[str] = None,
+    reporting_port: Optional[TimesheetReportingPort] = None,
+    collaborator_rates: Optional[CollaboratorRatesPort] = None,
 ) -> ConsolidatedReport:
     """
     Genera un reporte consolidado a partir de los resultados del BatchProcessor.
@@ -42,12 +45,12 @@ def generate_consolidated_from_batch_results(
     logger.info("Resultados exitosos: %d/%d", len(successful_results), len(batch_results))
 
     # ⚠️ CAMBIO CRÍTICO: Lista de TUPLAS (DataFrame, dict), no diccionarios.
-    consultores_data: List[Tuple[pd.DataFrame, dict]] = []
+    consultores_data: List[Tuple[TableData, dict]] = []
 
     for batch_result in successful_results:
         try:
             res = batch_result.result
-            df = res.corrected_dataframe.copy()
+            df = to_pandas_table(res.corrected_dataframe)
 
             # =========================================================
             # 🛡️ RED DE SEGURIDAD: NORMALIZACIÓN DE COLUMNAS
@@ -131,7 +134,7 @@ def generate_consolidated_from_batch_results(
             # =========================================================
             # 4️⃣ Agregar como TUPLA (df, metadata)
             # =========================================================
-            consultores_data.append((df, combined_metadata))
+            consultores_data.append((from_pandas_table(df), combined_metadata))
 
             logger.debug(
                 "Agregado consultor: %s (%s)",
@@ -151,12 +154,14 @@ def generate_consolidated_from_batch_results(
         raise ValueError("No se pudieron extraer datos válidos. Verifique columnas Fecha/Horas.")
 
     # Crear consolidador
-    consolidator = TimeSheetConsolidator(cliente=cliente)
-    
-    # Generar reporte pasando la lista de TUPLAS
-    consolidated_report = consolidator.generate_consolidated_report(
+    if reporting_port is None:
+        raise RuntimeError("Timesheet reporting port is not configured.")
+
+    consolidated_report = reporting_port.generate_consolidated_report(
+        cliente=cliente,
         consultores_data=consultores_data, 
         output_filename=output_filename,
+        collaborator_rates=collaborator_rates,
     )
 
     logger.info("Consolidado generado exitosamente: %s", consolidated_report.output_filename)
@@ -169,6 +174,8 @@ def generate_consolidated_from_batch_results(
 def generate_individual_business_it_excel(
     batch_result: BatchFileResult,
     cliente: str = "BANINTER",
+    reporting_port: Optional[TimesheetReportingPort] = None,
+    collaborator_rates: Optional[CollaboratorRatesPort] = None,
 ) -> Tuple[bytes, str]:
     """
     Genera un Excel individual con formato Business IT a partir de un resultado procesado.
@@ -177,7 +184,7 @@ def generate_individual_business_it_excel(
         raise ValueError("El resultado no es vÃ¡lido para generar reporte individual.")
 
     res = batch_result.result
-    df = res.corrected_dataframe.copy()
+    df = to_pandas_table(res.corrected_dataframe)
 
     # Normalización defensiva de columnas para plantillas BANINTER variables
     rename_map = {}
@@ -231,8 +238,15 @@ def generate_individual_business_it_excel(
             or batch_result.file_name.rsplit(".", 1)[0]
         )
 
-    consolidator = TimeSheetConsolidator(cliente=cliente)
-    workbook_bytes = consolidator.generate_single_consultant_report(df, metadata)
+    if reporting_port is None:
+        raise RuntimeError("Timesheet reporting port is not configured.")
+
+    workbook_bytes = reporting_port.generate_single_consultant_report(
+        cliente=cliente,
+        dataframe=from_pandas_table(df),
+        metadata=metadata,
+        collaborator_rates=collaborator_rates,
+    )
     source_stem = (batch_result.file_name or "").rsplit(".", 1)[0].strip()
     employee_safe = str(metadata["employee"]).replace(" ", "_")
     if source_stem:

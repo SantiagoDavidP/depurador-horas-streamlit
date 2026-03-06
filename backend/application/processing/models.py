@@ -3,10 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
-
-from backend.infrastructure.ai.llm_corrector import CorrectionResult
-from backend.domain.validation.validators import ValidationIssue
+from backend.application.tabular.table_data import TableData
+from backend.application.processing.correction_result import CorrectionResult
+from backend.application.validation.validators import ValidationIssue
 
 
 @dataclass
@@ -34,8 +33,8 @@ class ProcessorResult:
     validation_errors: List[ValidationIssue]
     corrections_log: List[CorrectionResult]
     summary: ProcessorSummary
-    corrected_dataframe: pd.DataFrame
-    errors_dataframe: pd.DataFrame
+    corrected_dataframe: TableData
+    errors_dataframe: TableData
     uploaded_blob_original: Optional[str] = None
     uploaded_blob_corrected: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)

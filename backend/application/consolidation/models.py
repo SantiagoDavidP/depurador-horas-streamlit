@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict
 
-import pandas as pd
+from backend.application.tabular.table_data import TableData
 
 
 @dataclass
@@ -20,7 +20,7 @@ class ConsultorMetrics:
     total_facturar: float
     valor_hora_extra: float
     total_horas_extras_facturar: float
-    dataframe: pd.DataFrame
+    dataframe: TableData
     metadata: Dict[str, object]
 
 

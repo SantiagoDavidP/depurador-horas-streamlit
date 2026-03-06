@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from backend.domain.calendar.holiday_detector import HolidayDetector
+from backend.application.calendar.holiday_detector import HolidayDetector
 
 
 @pytest.mark.unit

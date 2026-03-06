@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from backend.domain.profiles.profile_validations import run_profile_validations
+from backend.application.profiles.profile_validations import run_profile_validations
 
 
 @pytest.mark.unit

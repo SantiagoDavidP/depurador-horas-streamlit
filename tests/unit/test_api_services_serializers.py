@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 
 from api import serializers, services
+from backend.application.parsing.models import ParsedSheet
 from backend.domain.models import ColumnMapping
 from backend.domain.profiles.client_profiles import ClientProfile
-from backend.domain.parsing.excel_parser import ParsedSheet
 
 
 def _profile_bit() -> ClientProfile:

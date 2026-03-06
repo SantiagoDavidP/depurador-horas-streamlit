@@ -11,9 +11,11 @@ from backend.application.consolidation.consolidator_integration import (
     validate_batch_results_for_consolidation,
 )
 from backend.application.consolidation.models import ConsolidatedReport
-from backend.application.consolidation.service import TimeSheetConsolidator
 from backend.application.processing.models import ProcessorResult, ProcessorSummary
 from backend.domain.models import ColumnMapping
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.reporting.consolidation.service import TimeSheetConsolidator
+from backend.infrastructure.reporting.excel_timesheet_reporting_adapter import ExcelTimesheetReportingAdapter
 
 
 def _tiny_png_bytes() -> bytes:
@@ -79,7 +81,10 @@ def test_generate_consolidated_report_creates_bytes_and_sheets(tmp_path):
     bit_logo.write_bytes(_tiny_png_bytes())
     nova_logo.write_bytes(_tiny_png_bytes())
 
-    consolidator = TimeSheetConsolidator(cliente="NOVA - TI")
+    consolidator = TimeSheetConsolidator(
+        cliente="NOVA - TI",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
     consolidator.logo_path = bit_logo
     consolidator.client_logo_path = nova_logo
 
@@ -110,7 +115,10 @@ def test_generate_single_consultant_report_for_baninter(tmp_path):
     bit_logo.write_bytes(_tiny_png_bytes())
     ban_logo.write_bytes(_tiny_png_bytes())
 
-    consolidator = TimeSheetConsolidator(cliente="BANINTER")
+    consolidator = TimeSheetConsolidator(
+        cliente="BANINTER",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
     consolidator.logo_path = bit_logo
     consolidator.client_logo_path = ban_logo
 
@@ -152,6 +160,8 @@ def test_consolidator_integration_and_validation_warnings():
         batch_results=[ok_result, failed_result],
         cliente="NOVA - TI",
         output_filename="Consolidado_Integration.xlsx",
+        reporting_port=ExcelTimesheetReportingAdapter(),
+        collaborator_rates=get_collaborator_rates_manager(),
     )
     assert report.output_filename == "Consolidado_Integration.xlsx"
     assert report.consultores_incluidos == 1
@@ -176,7 +186,12 @@ def test_generate_individual_business_it_excel_from_batch_result():
         metadata=meta_ok,
     )
 
-    data, filename = generate_individual_business_it_excel(batch_result, cliente="BANINTER")
+    data, filename = generate_individual_business_it_excel(
+        batch_result,
+        cliente="BANINTER",
+        reporting_port=ExcelTimesheetReportingAdapter(),
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
     assert isinstance(data, (bytes, bytearray))
     assert len(data) > 100
     assert filename.endswith(".xlsx")

@@ -5,7 +5,7 @@ from typing import Sequence
 import pandas as pd
 
 from backend.domain.models import ColumnMapping
-from backend.domain.validation.validators import ValidationIssue, _coerce_hours_series
+from backend.application.validation.validators import ValidationIssue, _coerce_hours_series
 
 
 class ProcessingDebugViewsMixin:

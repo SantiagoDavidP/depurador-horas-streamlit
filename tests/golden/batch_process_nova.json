@@ -1,0 +1,58 @@
+{
+  "batch_id": "batch-1",
+  "is_baninter": false,
+  "default_client_name": "BIT Nova",
+  "auto_area": "CD",
+  "results": [
+    {
+      "file_name": "nova_golden.xlsx",
+      "sheet_name": "BIT Nova",
+      "success": true,
+      "client_id": "cliente_bit",
+      "metadata": {
+        "company": "BIT Nova",
+        "employee": "Victor Jaramillo",
+        "period_start": "2026-01-01",
+        "period_end": "2026-01-31",
+        "month_name": "January",
+        "year": 2026,
+        "report_date": "2026-01-31",
+        "period_source": "data_authority_final"
+      },
+      "summary": {
+        "total_registros": 2,
+        "total_errores": 1,
+        "horas_totales": 16.0,
+        "dias_con_problemas_horas": 0,
+        "errores_por_tipo": {
+          "completitud": 1
+        },
+        "errores_criticos": 0,
+        "errores_advertencia": 0,
+        "quality_score": 80.0
+      },
+      "errors": [
+        {
+          "fila": 0,
+          "tipo_error": "completitud",
+          "fecha": ""
+        }
+      ],
+      "employee_info": {
+        "metadata": "Victor Jaramillo",
+        "filename": "nova_golden",
+        "final": "Victor Jaramillo"
+      },
+      "download_id": "file-1",
+      "output_filename": "nova_golden_CORREGIDO.xlsx",
+      "holiday_info": {
+        "month": 1,
+        "year": 2026,
+        "source": "holidays_lib",
+        "holiday_count": 1
+      },
+      "llm_enabled": false,
+      "llm_corrections_count": 0
+    }
+  ]
+}

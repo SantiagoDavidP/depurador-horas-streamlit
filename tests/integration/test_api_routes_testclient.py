@@ -8,11 +8,11 @@ from api.main import app
 from api.presentation import handlers_batch, handlers_common, handlers_download
 from api.presentation import handlers_individual_analyze, handlers_individual_process
 from api.presentation.dependencies import auth_provider
+from backend.application.parsing.models import ParsedSheet
 from backend.application.batch.batch_processor import BatchFileResult
 from backend.application.consolidation.models import ConsolidatedReport
 from backend.application.processing.models import ProcessorResult, ProcessorSummary
 from backend.domain.models import ColumnMapping
-from backend.domain.parsing.excel_parser import ParsedSheet
 from backend.domain.profiles.client_profiles import ClientProfile
 
 
@@ -172,6 +172,7 @@ def test_api_routes_batch_and_download_flow(monkeypatch):
             dias_laborables=22,
         ),
     )
+    monkeypatch.setattr(handlers_batch, "_build_baninter_zip", lambda *_args, **_kwargs: b"zip-bytes")
 
     client = TestClient(app)
 
@@ -225,6 +226,20 @@ def test_api_routes_batch_and_download_flow(monkeypatch):
     download_resp = client.get(f"/api/download/{file_id}")
     assert download_resp.status_code == 200
     assert len(download_resp.content) > 0
+
+    # /api/batch/baninter-zip
+    baninter_zip_resp = client.post(
+        "/api/batch/baninter-zip",
+        json={"batchId": batch_id},
+    )
+    assert baninter_zip_resp.status_code == 200
+    baninter_zip_json = baninter_zip_resp.json()
+    assert "download_id" in baninter_zip_json
+    assert baninter_zip_json["filename"].endswith(".zip")
+
+    zip_download = client.get(f"/api/download/{baninter_zip_json['download_id']}")
+    assert zip_download.status_code == 200
+    assert zip_download.content == b"zip-bytes"
 
 
 def test_api_routes_individual_health_profile_me_and_download(monkeypatch):

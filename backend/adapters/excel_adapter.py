@@ -9,8 +9,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from backend.domain.parsing.excel_parser import load_sheet_with_header, ParsedSheet
 from backend.adapters import DataSourceAdapter, DataSourceConfig
+from backend.application.parsing.models import ParsedSheet
+from backend.infrastructure.parsing.excel_sheet_parser import load_sheet_with_header
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class ExcelAdapter(DataSourceAdapter):
             logger.info(f"Loading Excel file: {self.file_path}")
             
             # Use existing function - no changes to core logic
-            parsed_sheet = load_sheet_with_header(str(self.file_path))
+            parsed_sheet = load_sheet_with_header(self.file_path.read_bytes())
             
             logger.info(
                 f"Successfully loaded Excel: {len(parsed_sheet.dataframe)} rows, "

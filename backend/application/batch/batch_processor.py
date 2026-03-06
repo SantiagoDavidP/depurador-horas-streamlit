@@ -8,10 +8,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
-from backend.domain.parsing.excel_parser import ParsedSheet, load_sheet_with_header
-from backend.domain.models import ColumnMapping
+from backend.application.parsing.models import ParsedSheet
+from backend.application.ports.sheet_parser_port import SheetParserPort
 from backend.application.processing.models import ProcessorResult
 from backend.application.processing.service import TimeSheetProcessor
+from backend.domain.models import ColumnMapping
+from backend.shared.tabular.pandas_mapper import to_pandas_table
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +49,43 @@ class BatchFileResult:
 class BatchProcessor:
     """Ejecuta el TimeSheetProcessor secuencialmente para varios archivos."""
 
-    def __init__(self, processor: TimeSheetProcessor) -> None:
+    def __init__(
+        self,
+        processor: TimeSheetProcessor,
+        *,
+        sheet_parser: SheetParserPort,
+    ) -> None:
         self.processor = processor
+        self.sheet_parser = sheet_parser
         self._processor_tls = threading.local()
 
     def _get_thread_processor(self) -> TimeSheetProcessor:
         """Create one processor per worker thread to avoid async-client sharing."""
         thread_processor = getattr(self._processor_tls, "processor", None)
         if thread_processor is None:
-            thread_processor = TimeSheetProcessor(
-                expected_hours_per_day=self.processor.expected_hours,
-                role_validator=self.processor.role_validator,
-            )
+            processor_kwargs = {
+                "expected_hours_per_day": self.processor.expected_hours,
+                "role_validator": self.processor.role_validator,
+            }
+            llm_corrector = getattr(self.processor, "llm_corrector", None)
+            if llm_corrector is not None:
+                processor_kwargs["llm_corrector"] = llm_corrector
+            workbook_exporter = getattr(self.processor, "workbook_exporter", None)
+            if workbook_exporter is not None:
+                processor_kwargs["workbook_exporter"] = workbook_exporter
+            blob_storage = getattr(self.processor, "blob_storage", None)
+            if blob_storage is not None:
+                processor_kwargs["blob_storage"] = blob_storage
+            try:
+                thread_processor = TimeSheetProcessor(
+                    **processor_kwargs,
+                )
+            except TypeError:
+                processor_kwargs.pop("blob_storage", None)
+                processor_kwargs.pop("workbook_exporter", None)
+                thread_processor = TimeSheetProcessor(
+                    **processor_kwargs,
+                )
             self._processor_tls.processor = thread_processor
         return thread_processor
 
@@ -145,7 +172,7 @@ class BatchProcessor:
             t0 = time.perf_counter()
             parsed_sheet = file_request.parsed_sheet
             if parsed_sheet is None:
-                parsed_sheet = load_sheet_with_header(
+                parsed_sheet = self.sheet_parser.load_sheet_with_header(
                     file_request.file_bytes,
                     sheet_name=file_request.sheet_name,
                     header_row=file_request.header_row,

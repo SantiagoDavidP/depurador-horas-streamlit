@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from backend.infrastructure.observability.perf import PerfCollector
+from backend.shared.observability.perf import PerfRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def detect_and_remove_metadata_rows(
     description_column: str,
     row_numbers: Optional[Sequence[int]] = None,
     used_range: Optional[Dict[str, int]] = None,
-    perf: Optional[PerfCollector] = None,
+    perf: Optional[PerfRecorder] = None,
 ) -> Tuple[pd.DataFrame, Optional[List[int]], int]:
     """Filtra filas de metadata y devuelve DF limpio + filas originales restantes."""
     if df.empty:

@@ -6,7 +6,8 @@ from api.presentation import handlers_common
 from backend.application.batch.batch_processor import BatchFileResult
 from backend.application.processing.models import ProcessorResult, ProcessorSummary
 from backend.domain.models import ColumnMapping
-from backend.domain.profiles.client_profiles import ClientProfile, ClientProfileManager
+from backend.domain.profiles.client_profiles import ClientProfile
+from backend.infrastructure.config.client_profile_repository import JsonClientProfileRepository
 
 
 class _Store:
@@ -99,8 +100,8 @@ def test_client_profile_manager_load_get_save(tmp_path):
     }
     profiles_path.write_text(json.dumps(data), encoding="utf-8")
 
-    manager = ClientProfileManager(profiles_path=profiles_path)
-    loaded = manager.load_profiles()
+    manager = JsonClientProfileRepository(profiles_path=profiles_path)
+    loaded = manager.load_manager().load_profiles()
     assert "cliente_demo" in loaded
 
     profile = manager.get_profile("cliente_demo")
@@ -119,16 +120,16 @@ def test_client_profile_manager_load_get_save(tmp_path):
         settings={},
     )
     manager.save_profile(new_profile)
-    reloaded = manager.load_profiles(force_reload=True)
+    reloaded = manager.load_manager(force_reload=True).load_profiles()
     assert "cliente_new" in reloaded
 
 
 def test_client_profile_manager_missing_and_invalid_json(tmp_path):
     missing_path = tmp_path / "missing.json"
-    manager_missing = ClientProfileManager(profiles_path=missing_path)
-    assert manager_missing.load_profiles() == {}
+    manager_missing = JsonClientProfileRepository(profiles_path=missing_path)
+    assert manager_missing.load_manager().load_profiles() == {}
 
     bad_path = tmp_path / "bad.json"
     bad_path.write_text("{bad json", encoding="utf-8")
-    manager_bad = ClientProfileManager(profiles_path=bad_path)
-    assert manager_bad.load_profiles() == {}
+    manager_bad = JsonClientProfileRepository(profiles_path=bad_path)
+    assert manager_bad.load_manager().load_profiles() == {}

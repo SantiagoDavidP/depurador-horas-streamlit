@@ -12,8 +12,9 @@ from api.services import is_baninter_result, resolve_employee
 from backend.application.batch.batch_processor import BatchFileResult
 from backend.application.consolidation.consolidator_integration import generate_individual_business_it_excel
 from backend.domain.models import ColumnMapping
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
 
-from api.presentation.dependencies import file_store
+from api.presentation.dependencies import file_store, timesheet_reporting
 from api.presentation.parsing import compact_metadata as _compact_metadata
 from api.presentation.parsing import to_bool as _to_bool
 
@@ -71,7 +72,10 @@ def _serialize_result(
     if is_baninter_result(result.file_name, result.metadata, result.client_id):
         try:
             business_bytes, business_name = generate_individual_business_it_excel(
-                result, cliente="BANINTER"
+                result,
+                cliente="BANINTER",
+                reporting_port=timesheet_reporting,
+                collaborator_rates=get_collaborator_rates_manager(),
             )
             business_id = file_store.store_file(
                 business_bytes,
@@ -99,7 +103,10 @@ def _build_baninter_zip(batch_results: List[BatchFileResult]) -> Optional[bytes]
             if not is_baninter_result(res.file_name, res.metadata, res.client_id):
                 continue
             business_bytes, business_name = generate_individual_business_it_excel(
-                res, cliente="BANINTER"
+                res,
+                cliente="BANINTER",
+                reporting_port=timesheet_reporting,
+                collaborator_rates=get_collaborator_rates_manager(),
             )
             safe_name = business_name or f"BANINTER_{idx + 1}.xlsx"
             if safe_name in used_names:

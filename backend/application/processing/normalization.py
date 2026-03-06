@@ -7,7 +7,7 @@ from typing import List, Optional, Sequence
 import pandas as pd
 
 from backend.domain.models import ColumnMapping
-from backend.domain.validation.validators import ValidationIssue
+from backend.application.validation.validators import ValidationIssue
 
 from .constants import _ERROR_PRIORITY, _ERROR_PRIORITY_INDEX
 

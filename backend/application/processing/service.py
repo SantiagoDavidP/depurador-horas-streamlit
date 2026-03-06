@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
-from backend.domain.parsing.excel_parser import ParsedSheet
-from backend.infrastructure.ai.llm_corrector import CorrectionResult, LLMCorrector
+from backend.application.parsing.models import ParsedSheet
+from backend.application.ports.blob_storage_port import BlobStoragePort
+from backend.application.ports.llm_corrector_port import LLMCorrectorPort
+from backend.application.ports.workbook_export_port import WorkbookExportPort
+from backend.application.processing.correction_result import CorrectionResult
+from backend.application.tabular.table_data import TableData
 from backend.domain.models import ColumnMapping
 from backend.domain.roles.role_validator import RoleActivityValidator
-from backend.application.ports.llm_corrector_port import LLMCorrectorPort
-from backend.infrastructure.ai.llm_corrector_adapter import LLMCorrectorAdapter
 
 from .debug_views import ProcessingDebugViewsMixin
-from .excel_export import ProcessingExcelExportMixin
 from .models import ProcessorResult
 from .normalization import ProcessingNormalizationMixin
 from .pipeline import process_parsed_sheet_impl
@@ -24,11 +24,34 @@ from .summary import ProcessingSummaryMixin
 logger = logging.getLogger(__name__)
 
 
+class _NoOpLLMCorrector:
+    def correct_descriptions(
+        self,
+        rows: Sequence[tuple[int, str]],
+        *,
+        role: str,
+        project: str,
+    ) -> List[CorrectionResult]:
+        return []
+
+
+class _MissingWorkbookExporter:
+    def export_workbook(
+        self,
+        corrected_df: TableData,
+        errors_df: TableData,
+        summary,
+        *,
+        debug_hours_df: Optional[TableData] = None,
+        debug_detail_df: Optional[TableData] = None,
+    ) -> bytes:
+        raise RuntimeError("Workbook export port is not configured for this processor.")
+
+
 class TimeSheetProcessor(
     ProcessingNormalizationMixin,
     ProcessingDebugViewsMixin,
     ProcessingSummaryMixin,
-    ProcessingExcelExportMixin,
 ):
     """Orquesta validaciones, limpieza, correcciones LLM y reportes."""
 
@@ -37,27 +60,17 @@ class TimeSheetProcessor(
         *,
         expected_hours_per_day: float = 8.0,
         llm_corrector: Optional[LLMCorrectorPort] = None,
+        blob_storage: Optional[BlobStoragePort] = None,
+        workbook_exporter: Optional[WorkbookExportPort] = None,
         role_validator: Optional[RoleActivityValidator] = None,
     ) -> None:
         self.expected_hours = expected_hours_per_day
-        base_corrector: LLMCorrectorPort = llm_corrector or LLMCorrectorAdapter(
-            LLMCorrector(batch_size=20)
-        )
+        base_corrector: LLMCorrectorPort = llm_corrector or _NoOpLLMCorrector()
         self.llm_corrector: LLMCorrectorPort
         self.llm_corrector = base_corrector
-        self.role_validator = role_validator or self._load_role_validator()
-
-    @staticmethod
-    def _load_role_validator() -> Optional[RoleActivityValidator]:
-        taxonomy_path = Path(__file__).resolve().parents[3] / "config" / "role_taxonomy.json"
-        if not taxonomy_path.exists():
-            logger.warning("No se encontro role_taxonomy.json, se omite validacion de rol.")
-            return None
-        try:
-            return RoleActivityValidator.from_json(taxonomy_path)
-        except Exception as exc:
-            logger.warning("No se pudo cargar la taxonomia de roles: %s", exc)
-            return None
+        self.blob_storage = blob_storage
+        self.workbook_exporter = workbook_exporter or _MissingWorkbookExporter()
+        self.role_validator = role_validator
 
     @staticmethod
     def _is_baninter_profile(client_profile_id: Optional[str], metadata: Dict[str, object]) -> bool:
