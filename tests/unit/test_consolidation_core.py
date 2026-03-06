@@ -1,4 +1,5 @@
 import io
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -37,6 +38,17 @@ def _build_df() -> pd.DataFrame:
             "Tipo Hora": ["HN", "HE"],
             "Ticket": ["123", "ABC-1"],
             r"\NOVA\TecnologÃ­a - Documentos\IT\Desarrollo\DocumentaciÃ³n\2025": ["", None],
+        }
+    )
+
+
+def _build_baninter_df_four_cols() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "Fecha": ["2026-01-13", "2026-01-14"],
+            "Horas": [8.0, 8.0],
+            "Tareas": ["Atencion de incidentes baninter", "Revision de tickets criticos"],
+            "Proyecto": ["BAN-OPS", "BAN-OPS"],
         }
     )
 
@@ -132,6 +144,39 @@ def test_generate_single_consultant_report_for_baninter(tmp_path):
     wb = load_workbook(io.BytesIO(output))
     assert wb.sheetnames
     assert "Pamela Chavez" in wb.sheetnames[0]
+
+
+def test_generate_single_consultant_report_for_baninter_with_four_columns():
+    consolidator = TimeSheetConsolidator(
+        cliente="BANINTER",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
+
+    output = consolidator.generate_single_consultant_report(
+        dataframe=_build_baninter_df_four_cols(),
+        metadata=_build_metadata("Victor Jaramillo", "BANINTER"),
+    )
+    assert isinstance(output, (bytes, bytearray))
+    assert len(output) > 100
+
+
+def test_generate_consolidated_report_with_default_repo_logos_embeds_images():
+    consolidator = TimeSheetConsolidator(
+        cliente="BANINTER",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
+
+    report = consolidator.generate_consolidated_report(
+        consultores_data=[(_build_df(), _build_metadata("Pamela Chavez", "BANINTER"))],
+        output_filename="Consolidado_BANINTER.xlsx",
+    )
+
+    assert len(report.workbook_bytes) > 100
+
+    with zipfile.ZipFile(io.BytesIO(report.workbook_bytes)) as workbook_zip:
+        media_entries = [name for name in workbook_zip.namelist() if name.startswith("xl/media/")]
+
+    assert len(media_entries) >= 2
 
 
 def test_consolidator_integration_and_validation_warnings():

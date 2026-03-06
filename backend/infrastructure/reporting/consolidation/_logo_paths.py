@@ -14,11 +14,11 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl.drawing.image import Image
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 from openpyxl.drawing.xdr import XDRPositiveSize2D
-from openpyxl.utils import get_column_letter, column_index_from_string
+from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.worksheet import Worksheet
 
-from .models import ConsultorMetrics, ConsolidatedReport
+from .models import ConsolidatedReport, ConsultorMetrics
 from .styles import *
 
 try:
@@ -29,8 +29,15 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-
 class LogoPathsMixin:
+    @staticmethod
+    def _repo_logo_roots() -> tuple[Path, Path]:
+        """Devuelve las raíces backend y repo para buscar logos de forma estable."""
+        current_file = Path(__file__).resolve()
+        backend_dir = current_file.parents[3]
+        repo_root = backend_dir.parent
+        return backend_dir, repo_root
+
     def _resolve_logo_path(self, logo_path: Optional[Path]) -> Optional[Path]:
         """
         Resuelve la ruta del logo.
@@ -44,44 +51,29 @@ class LogoPathsMixin:
         if logo_path and logo_path.exists():
             return logo_path
 
-        # Buscar en ubicaciones estándar
-        module_dir = Path(__file__).resolve().parents[2]
-        project_root = module_dir.parent
+        backend_dir, repo_root = self._repo_logo_roots()
 
-        # Regresar al comportamiento base: logo principal Business IT (logobit)
-        preferred_names = ["logobit.png", "Logo.png", "logo.png"]
-        for name in preferred_names:
-            for candidate in (
-                module_dir / name,
-                module_dir / "application" / name,
-                project_root / "frontend" / name,
-                project_root / name,
-            ):
-                if candidate.exists():
-                    logger.info("Logo principal encontrado en: %s", candidate)
-                    return candidate
-
-        # Ubicaciones posibles
-        possible_paths = [
-            module_dir / "logobit.png",
-            module_dir / "application" / "logobit.png",
-            project_root / "frontend" / "logo.png",
-            project_root / "assets" / "logo.png",
-            project_root / "logo.png",
+        # Mantener prioridad histórica: BIT/logobit primero, luego fallback frontend.
+        preferred_paths = [
+            backend_dir / "application" / "logobit.png",
+            repo_root / "frontend" / "Logo.png",
+            repo_root / "frontend" / "logo.png",
+            repo_root / "logobit.png",
+            repo_root / "Logo.png",
+            repo_root / "logo.png",
         ]
 
-        for path in possible_paths:
-            if path.exists():
-                logger.info("Logo encontrado en: %s", path)
-                return path
+        for candidate in preferred_paths:
+            if candidate.exists():
+                logger.info("Logo principal encontrado en: %s", candidate)
+                return candidate
 
-        logger.warning("No se encontró logo.png en ubicaciones estándar")
+        logger.warning("No se encontró el logo principal en ubicaciones estándar del repositorio")
         return None
 
     def _resolve_client_logo_path(self) -> Optional[Path]:
         """Resuelve logo secundario por cliente (NOVA/BANINTER)."""
-        module_dir = Path(__file__).resolve().parents[2]
-        project_root = module_dir.parent
+        backend_dir, repo_root = self._repo_logo_roots()
         cliente_lower = (self.cliente or "").lower()
 
         if any(k in cliente_lower for k in ["baninter", "banco internacional"]):
@@ -90,7 +82,11 @@ class LogoPathsMixin:
             names = ["NOVA.png", "nova.png"]
 
         for name in names:
-            for candidate in (project_root / name, module_dir / name, project_root / "frontend" / name):
+            for candidate in (
+                repo_root / name,
+                repo_root / "frontend" / name,
+                backend_dir / name,
+            ):
                 if candidate.exists():
                     logger.info("Logo secundario encontrado en: %s", candidate)
                     return candidate
