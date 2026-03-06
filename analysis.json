@@ -1,0 +1,197 @@
+{
+  "project_name": "automatizacion-pedidos-devoluciones-bonapharm",
+  "objective": "Implementar una plataforma digital completa basada en Microsoft Power Platform que automatice y optimice de manera integral los procesos críticos de negocio de BONAPHARM DEL PERU. El sistema centraliza la toma y aprobación de pedidos, el cálculo automático de comisiones y recuperos, y la gestión completa de devoluciones de productos farmacéuticos. La solución está diseñada para tres tipos de usuarios principales: vendedores que registran pedidos en campo, administradores comerciales que aprueban y gestionan solicitudes, y personal de finanzas que supervisa comisiones y recuperos. El sistema integra datos maestros de SAP, gestiona flujos de aprobación con Power Automate, almacena documentos en SharePoint, y proporciona reportes gerenciales mediante Power BI. La plataforma reduce significativamente los tiempos de procesamiento, elimina errores manuales en cálculos de comisiones, mejora la trazabilidad de devoluciones, y proporciona visibilidad en tiempo real del estado de operaciones comerciales.",
+  "modules": [
+    {
+      "area": "Autenticación y Seguridad",
+      "modules": [
+        {
+          "id": "AUTH-1",
+          "name": "Gestión de Acceso",
+          "features": [
+            "Pantalla de login con autenticación dual: formulario estándar (email/contraseña) con validación de formato de correo y Microsoft Entra ID SSO mediante OAuth2.0 con MFA",
+            "Recuperación de contraseña mediante enlace enviado por correo electrónico con token de expiración temporal",
+            "Opción 'Recordar sesión' que extiende el token de autenticación por 30 días",
+            "Protección contra inyección SQL y XSS en formularios de login",
+            "Redirección automática al dashboard correspondiente según rol del usuario autenticado",
+            "Cierre de sesión con invalidación de tokens y redirección a pantalla de login",
+            "Control de acceso basado en roles (RBAC) con permisos diferenciados por módulo"
+          ],
+          "submodules": []
+        }
+      ]
+    },
+    {
+      "area": "Portal Vendedor",
+      "modules": [
+        {
+          "id": "PV-1",
+          "name": "Dashboard Vendedor",
+          "features": [
+            "Vista general con KPIs personalizados: pedidos totales del mes actual, pedidos en aprobación, cantidad de devoluciones, comisiones acumuladas del mes",
+            "Gráfico de barras horizontales mostrando distribución de pedidos por estado (Aprobados, Pendientes, Rechazados) con porcentajes calculados automáticamente",
+            "Listado de top 5 productos vendidos del mes con código SAP, nombre, y cantidad total en unidades",
+            "Timeline de actividad reciente con últimos 10 eventos: pedidos aprobados, nuevos registros, devoluciones en proceso, comisiones calculadas, con timestamps relativos",
+            "Barra de búsqueda global para localizar pedidos y productos por código o nombre",
+            "Notificaciones en tiempo real con badge indicador de mensajes no leídos",
+            "Acceso directo a las funcionalidades más utilizadas mediante botones de acción rápida"
+          ],
+          "submodules": []
+        },
+        {
+          "id": "PV-2",
+          "name": "Registro de Pedidos",
+          "features": [
+            "Formulario de información del cliente con búsqueda automática por RUC que consulta API de SAP y auto-completa razón social",
+            "Campos obligatorios: RUC del cliente (11 dígitos numéricos), representante (texto libre), condición de pago (selector: Contado, Crédito 30 días, Crédito 60 días)",
+            "Selector de productos mediante modal o autocompletado que consulta catálogo de Dataverse sincronizado con SAP",
+            "Tabla dinámica de productos del pedido con columnas: Código SAP, Nombre del producto, Tipo (Venta/Bonificación), Cantidad (editable inline), Precio unitario (auto-rellenado), Subtotal (calculado automáticamente)",
+            "Diferenciación visual de productos de venta (badge azul) y bonificaciones (badge verde) con precio en S/ 0.00 para bonificaciones",
+            "Botón 'Agregar Producto' que abre modal de búsqueda con filtros por molécula, distribuidor, y categoría",
+            "Cálculo automático en tiempo real de: Subtotal, IGV (18%), Total final, cantidad total de bonificaciones",
+            "Validación de mínimos por distribuidor antes de permitir envío del pedido",
+            "Botón 'Guardar Borrador' que almacena el pedido con estado 'Borrador' para continuar después",
+            "Botón 'Enviar Pedido' que valida completitud de datos, calcula totales finales, y cambia estado a 'Enviado' generando código único (formato: PED-YYYY-NNNN)",
+            "Notificación de confirmación al enviar pedido y disparador de workflow de Power Automate para notificar a administrador comercial",
+            "Manejo de errores con mensajes claros: RUC inválido, producto sin stock, mínimos no alcanzados"
+          ],
+          "submodules": []
+        },
+        {
+          "id": "PV-3",
+          "name": "Consulta de Pedidos",
+          "features": [
+            "Tabla paginada de pedidos del vendedor autenticado con columnas: Código, Cliente (razón social + RUC), Representante, Fecha, Total, Estado, Acciones",
+            "Barra de búsqueda por código de pedido o nombre de cliente con búsqueda difusa (fuzzy search)",
+            "Filtros combinables: Estado (Todos/Enviado/Aprobado/Rechazado), Rango de fechas (Último mes/Últimos 3 meses/Último año/Personalizado)",
+            "Badges de estado con códigos de color: Aprobado (verde con punto), Enviado (amarillo con punto), Rechazado (rojo con punto)",
+            "Acciones por fila: Ver detalle (modal con información completa del pedido incluyendo productos), Descargar PDF (genera comprobante), Editar (solo si estado es 'Enviado'), Reenviar (si estado es 'Rechazado')",
+            "Paginación con selector de resultados por página (10, 25, 50, 100) y navegación numérica",
+            "Botón 'Exportar' para generar Excel con todos los pedidos filtrados",
+            "Botón 'Nuevo Pedido' que redirige al formulario de registro",
+            "Contador de total de pedidos según filtros aplicados",
+            "Ordenamiento por columna (ascendente/descendente) mediante clic en headers"
+          ],
+          "submodules": []
+        }
+      ]
+    },
+    {
+      "area": "Portal Distribuidor/Comercial",
+      "modules": [
+        {
+          "id": "PD-1",
+          "name": "Aprobación de Pedidos",
+          "features": [
+            "Vista de tarjetas expandibles (card layout) para pedidos con estado 'Enviado' pendientes de revisión",
+            "Indicador visual de cantidad de pedidos pendientes en header (badge amarillo con número)",
+            "Filtros: Búsqueda por código o cliente, selector de vendedor, ordenamiento (Más recientes/Monto mayor/Fecha más antigua)",
+            "Cada tarjeta muestra: Código del pedido, fecha y hora de registro, estado con badge, monto total destacado, información del cliente (razón social, RUC), datos del vendedor (nombre, email), condición de pago",
+            "Listado detallado de productos dentro de la tarjeta con diferenciación visual de bonificaciones (fondo verde claro, borde verde)",
+            "Muestra cantidad, precio unitario, y subtotal por producto",
+            "Botones de acción por pedido: 'Aprobar Pedido' (verde) que cambia estado a 'Aprobado' y dispara notificación por email al distribuidor y vendedor, 'Rechazar' (rojo) que abre modal solicitando motivo de rechazo, 'Comentarios' (icono) para agregar observaciones internas",
+            "Al aprobar, workflow de Power Automate envía datos a SAP y crea registro en sistema de facturación",
+            "Confirmación modal antes de ejecutar acción de aprobación o rechazo",
+            "Histórico de acciones (quién aprobó/rechazó y cuándo) visible en detalle ampliado"
+          ],
+          "submodules": []
+        },
+        {
+          "id": "PD-2",
+          "name": "Gestión de Devoluciones",
+          "features": [
+            "Pestañas: 'Registrar Devolución' (formulario) y 'Historial' (tabla de devoluciones previas)",
+            "Formulario de registro con campos obligatorios: Código de pedido asociado (con búsqueda), Número de factura (formato validado: F001-00012345)",
+            "Auto-relleno de información del cliente al seleccionar pedido: razón social, RUC, representante, fecha del pedido",
+            "Sección de productos a devolver con tarjetas expandibles por producto",
+            "Por cada producto: Nombre, código SAP, cantidad a devolver (con validación de máximo según cantidad original del pedido), número de lote (texto libre), razón de devolución (selector: Producto dañado, Fecha de vencimiento próxima, Error en el pedido, Cliente rechazó entrega, Defecto de fabricación)",
+            "Cálculo automático del 'Valorizado' por producto (cantidad a devolver × precio unitario original)",
+            "Botón 'Agregar Otro Producto' para devolver múltiples ítems del mismo pedido",
+            "Campo de observaciones adicionales (textarea) para detalles complementarios",
+            "Resumen de devolución: Total de productos a devolver (ítems y unidades), Valorizado total calculado",
+            "Botón 'Registrar Devolución' que genera código único (formato: DEV-YYYY-NNNN), guarda estado inicial como 'En Proceso', y dispara workflow de notificación al administrador",
+            "Validaciones: No permitir cantidad mayor a la del pedido original, productos marcados como 'inafecto_devolucion' no aparecen en selector",
+            "Tabla de devoluciones recientes con columnas: Código, Pedido asociado, Cliente, Producto, Lote, Cantidad, Valorizado, Estado (En Proceso, Aprobada, Rechazada)"
+          ],
+          "submodules": []
+        },
+        {
+          "id": "PD-3",
+          "name": "Cálculo de Comisiones",
+          "features": [
+            "Selector de periodo mensual para cálculo (mes y año) con calendario desplegable",
+            "KPIs resumidos en tarjetas grandes tipo hero: Total Ventas del Mes (con comparativa vs mes anterior), Comisiones Totales calculadas, Recuperos por Devoluciones (con cantidad de devoluciones procesadas)",
+            "Tarjetas expandibles por distribuidor (Dimexa, Química Suiza) con diseño diferenciado por color",
+            "Por cada distribuidor muestra: Nombre y RUC, Comisión total del periodo (número destacado), Ventas totales del mes, Porcentaje de comisión aplicado (10% para Dimexa, 13% para Química basado en diferencia de precio), Recuperos a deducir, Neto a pagar final",
+            "Tabla de detalle de cálculo con filas: Ventas del periodo (monto base × porcentaje = comisión), Recupero por devoluciones (valorizado × porcentaje = descuento en rojo), Total neto (footer con suma final)",
+            "Botón 'Ver Detalle' que abre modal con desglose pedido por pedido incluido en el cálculo",
+            "Botón 'Aprobar Pago' que cambia estado de comisión a 'Aprobada' y genera registro contable",
+            "Botón 'Ejecutar Cálculo' en header que dispara workflow de Power Automate para recalcular comisiones del periodo seleccionado consultando pedidos aprobados en Dataverse",
+            "Botón 'Exportar Excel' que genera archivo con detalle completo: distribuidor, periodo, ventas, comisiones, recuperos, neto, con formato contable",
+            "Para Dimexa: Comisión = 10% de ventas totales - 10% de devoluciones valorizadas",
+            "Para Química Suiza: Comisión = 13% de la diferencia entre precio de venta y precio de compra - 13% de devoluciones valorizadas",
+            "Validación: Solo se incluyen pedidos con estado 'Aprobado' dentro del rango de fechas del mes seleccionado"
+          ],
+          "submodules": []
+        }
+      ]
+    },
+    {
+      "area": "Reportes y Analítica",
+      "modules": [
+        {
+          "id": "REP-1",
+          "name": "Power BI Reports",
+          "features": [
+            "Pestañas de reportes embebidos: Ventas General, Por Vendedor, Por Distribuidor, Por Producto, Por Región",
+            "Dashboard principal 'Ventas General' con columna de KPIs: Ventas Totales (con comparativa porcentual vs periodo anterior), Pedidos Procesados (con trending), Tasa de Aprobación (porcentaje con indicador de cambio), Devoluciones (con trending)",
+            "Gráfico de barras central: Evolución de ventas mensual de los últimos 6 meses con barras en gradiente azul y mes actual resaltado",
+            "Gráfico de dona (donut chart) mostrando distribución de ventas por distribuidor con leyenda de porcentajes",
+            "Tabla Top Productos con ranking de los 4 productos más vendidos en unidades",
+            "Filtros interactivos de Power BI: Rango de fechas (selector de calendario), Distribuidor (multi-select), Región (si aplica), Vendedor (multi-select)",
+            "Botón de refrescar datos que actualiza dataset de Dataverse",
+            "Botones de exportación: PDF (genera reporte estático), Excel (exporta data cruda del visual seleccionado), Compartir (genera link con permisos)",
+            "Modo pantalla completa para presentaciones",
+            "Timestamp de última actualización de datos en footer del reporte",
+            "Galería de reportes adicionales disponibles con tarjetas clicables: Rendimiento por Vendedor, Análisis de Comisiones, Devoluciones & Recuperos",
+            "Branding de Power BI visible con logo de Microsoft Power BI",
+            "Conexión directa a Dataverse mediante conector nativo de Power BI para lectura de tablas: Pedido, DetallePedido, Producto, Comision, Devolucion"
+          ],
+          "submodules": []
+        }
+      ]
+    }
+  ],
+  "actors": [
+    "Vendedor (Portal Vendedor): Registra pedidos de clientes en campo, adjunta productos y bonificaciones, consulta estado de pedidos históricos, descarga comprobantes. Acceso a módulos: PV-1, PV-2, PV-3, REP-1 (vistas filtradas por usuario)",
+    "Administrador Comercial (Portal Distribuidor): Revisa y aprueba/rechaza pedidos pendientes, gestiona solicitudes de devolución, registra nuevas devoluciones con razón y lote. Acceso a módulos: PD-1, PD-2, REP-1 (vistas generales)",
+    "Finanzas (Cálculo y Supervisión): Ejecuta cálculos mensuales de comisiones por distribuidor, aprueba pagos de comisiones, revisa recuperos por devoluciones, exporta reportes contables. Acceso a módulos: PD-3, REP-1 (vistas financieras completas)",
+    "Gerente General (Reportes y Toma de Decisiones): Accede a todos los dashboards de Power BI, visualiza métricas consolidadas, analiza tendencias de ventas y devoluciones, genera reportes ejecutivos. Acceso completo a módulo REP-1",
+    "Sistema SAP (Integración Externa): Proporciona catálogo de productos con códigos SAP, precios VVF, información de distribuidores, datos de inventario y lotes, información de facturas. Consulta bidireccional mediante API REST"
+  ],
+  "integrations": [
+    "Microsoft Entra ID (Azure Active Directory): Autenticación de usuarios mediante OAuth2.0, soporte de MFA, gestión de roles y permisos RBAC, sincronización de usuarios corporativos, tokens de sesión con expiración configurable",
+    "SAP API (Sistema ERP Externo): Consulta de catálogo de productos (GET /api/sap/inventory), sincronización de datos maestros de clientes, validación de stock disponible por producto y lote, envío de pedidos aprobados para facturación, consulta de facturas emitidas para devoluciones. Autenticación mediante API Key",
+    "Microsoft Dataverse: Base de datos central para todas las tablas (Pedido, DetallePedido, Devolucion, Producto, Comision), API REST estándar (OData v9.2), soporte de relaciones Many-to-One y One-to-Many, triggers automáticos al crear/actualizar registros",
+    "Power Automate (Workflows): Flujo 'NotificacionPedidos' disparado al crear Pedido con estado 'Enviado' enviando email al administrador comercial, Flujo 'AprobacionDevoluciones' al crear Devolucion notificando a finanzas, Flujo 'CalculoComisiones' ejecutado mensualmente consultando pedidos del periodo y calculando comisiones por distribuidor, Flujo 'IntegracionSAP' sincronizando catálogo de productos cada 6 horas",
+    "SharePoint Online: Almacenamiento de reportes Excel exportados en carpeta 'DEV' (desarrollo) y 'QA' (pruebas), Document Library con versionado automático, permisos heredados de grupos de Entra ID",
+    "Power BI Service: Embebido de dashboards en Power Pages mediante iframes, conexión a Dataverse vía conector certificado, refrescos programados cada hora, row-level security (RLS) basada en rol del usuario autenticado",
+    "SMTP (Email Notifications): Envío de notificaciones transaccionales: pedido enviado, pedido aprobado/rechazado, devolución registrada, comisión calculada. Configurado mediante conector de Office 365 Outlook en Power Automate"
+  ],
+  "constraints": [
+    "Plataforma Microsoft Power Platform: Toda la solución debe implementarse exclusivamente con servicios de Power Platform (Power Pages, Power Automate, Dataverse, Power BI), no se permiten servicios de terceros",
+    "Autenticación obligatoria vía Entra ID: Todos los usuarios deben autenticarse mediante Microsoft Entra ID corporativo de BONAPHARM, no se permiten cuentas locales fuera del directorio",
+    "Cifrado AES-256 y TLS 1.2+: Todas las comunicaciones entre frontend y backend deben usar HTTPS con certificados válidos, datos en reposo cifrados automáticamente por Dataverse",
+    "Restricción de productos inafectos: Productos marcados con 'inafecto_devolucion = true' en catálogo no pueden aparecer en selector de devoluciones",
+    "Límite de concurrencia: El sistema debe manejar 500 solicitudes mensuales con crecimiento proyectado de 20% mensual durante 24 meses sin degradación de rendimiento",
+    "Responsive design HD: Todas las pantallas deben ser responsive y funcionales en resoluciones 1920×1080 (desktop), 768×1024 (tablet), 375×667 (smartphone)",
+    "Tiempo de respuesta API: Consultas a Dataverse no deben exceder 2 segundos, consultas a SAP con timeout de 10 segundos",
+    "Backup automático: Dataverse realiza backup incremental durante el día y full backup diario, retención de 30 días",
+    "No soporta modo offline: La aplicación requiere conexión permanente a internet, no hay funcionalidad offline",
+    "RBAC estricto: Los permisos por módulo son estrictos, un vendedor no puede acceder a funciones de aprobación ni cálculo de comisiones, un administrador comercial no puede ejecutar cálculos de comisiones",
+    "Validación de mínimos por distribuidor: Cada distribuidor tiene un monto mínimo de pedido configurado en Dataverse, el sistema no permite enviar pedidos que no alcancen ese mínimo",
+    "Porcentajes de comisión fijos: Dimexa siempre 10%, Química Suiza siempre 13%, configurados en tabla Comision y no editables por usuarios finales",
+    "Timeline de implementación: 13 semanas con presupuesto fijo de USD 26,000, sin extensiones",
+    "Disponibilidad 99.99%: SLA de Azure garantiza uptime mínimo del 99.99% con ventanas de mantenimiento planificadas los domingos 2-4 AM"
+  ]
+}

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reportes Power BI — BONAPHARM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#1D4ED8', hover: '#1E40AF', light: '#DBEAFE' },
+            accent: { DEFAULT: '#0EA5E9', hover: '#0284C7' },
+            success: { DEFAULT: '#059669', light: '#D1FAE5' },
+          },
+          fontFamily: { sans: ['Inter', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 font-sans antialiased text-slate-900">
+
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col flex-shrink-0">
+      <div class="h-16 flex items-center px-6 border-b border-slate-200">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+          </div>
+          <span class="font-bold text-lg text-slate-900">BONAPHARM</span>
+        </div>
+      </div>
+      <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+        <a href="02-dashboard.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+          <span>Dashboard</span>
+        </a>
+        <div class="pt-4 pb-2 px-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Portal Vendedor</p>
+        </div>
+        <a href="03-registro-pedidos.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+          <span>Registro de Pedidos</span>
+        </a>
+        <a href="04-consulta-pedidos.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+          <span>Consulta de Pedidos</span>
+        </a>
+        <div class="pt-4 pb-2 px-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Portal Distribuidor</p>
+        </div>
+        <a href="05-aprobacion-pedidos.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="check-circle" class="w-5 h-5"></i>
+          <span>Aprobación de Pedidos</span>
+        </a>
+        <a href="06-gestion-devoluciones.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="package-x" class="w-5 h-5"></i>
+          <span>Gestión Devoluciones</span>
+        </a>
+        <a href="07-calculo-comisiones.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="percent" class="w-5 h-5"></i>
+          <span>Cálculo Comisiones</span>
+        </a>
+        <div class="pt-4 pb-2 px-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Reportes</p>
+        </div>
+        <a href="08-reportes.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary-light text-primary font-medium cursor-pointer">
+          <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+          <span>Power BI Reports</span>
+        </a>
+      </nav>
+      <div class="border-t border-slate-200 p-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white text-sm font-semibold">JG</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-900 truncate">Jorge García</p>
+            <p class="text-xs text-slate-500 truncate">Gerente General</p>
+          </div>
+          <button class="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 overflow-y-auto bg-slate-100">
+
+      <!-- TOPBAR -->
+      <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
+        <div>
+          <h1 class="text-lg font-semibold text-slate-900">Reportes Gerenciales</h1>
+          <p class="text-xs text-slate-500">Análisis avanzado con Power BI</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            Actualizar
+          </button>
+          <button class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+            <i data-lucide="share-2" class="w-4 h-4"></i>
+            Compartir
+          </button>
+          <button class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors">
+            <i data-lucide="maximize-2" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- PAGE CONTENT -->
+      <div class="p-6 space-y-6">
+
+        <!-- Report Tabs -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center gap-1 p-2 border-b border-slate-200 overflow-x-auto">
+            <button class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-primary rounded-lg cursor-pointer">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+              Ventas General
+            </button>
+            <button class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors">
+              <i data-lucide="users" class="w-4 h-4"></i>
+              Por Vendedor
+            </button>
+            <button class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors">
+              <i data-lucide="building-2" class="w-4 h-4"></i>
+              Por Distribuidor
+            </button>
+            <button class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors">
+              <i data-lucide="package" class="w-4 h-4"></i>
+              Por Producto
+            </button>
+            <button class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors">
+              <i data-lucide="map-pin" class="w-4 h-4"></i>
+              Por Región
+            </button>
+          </div>
+
+          <!-- Power BI Embed Placeholder -->
+          <div class="relative" style="height: 600px;">
+            <!-- Simulated Power BI Dashboard -->
+            <div class="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+
+              <!-- Filters Bar (Power BI style) -->
+              <div class="flex items-center gap-3 mb-4 pb-4 border-b border-slate-300">
+                <div class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded shadow-sm">
+                  <i data-lucide="calendar" class="w-4 h-4 text-slate-500"></i>
+                  <span class="text-sm text-slate-700">Último Trimestre</span>
+                  <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+                </div>
+                <div class="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded shadow-sm">
+                  <i data-lucide="filter" class="w-4 h-4 text-slate-500"></i>
+                  <span class="text-sm text-slate-700">Todos los distribuidores</span>
+                  <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+                </div>
+                <button class="ml-auto p-2 text-slate-600 hover:bg-slate-200 rounded cursor-pointer transition-colors">
+                  <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+                </button>
+              </div>
+
+              <!-- Dashboard Grid -->
+              <div class="grid grid-cols-12 gap-4 h-[calc(100%-80px)]">
+
+                <!-- Left Column: KPI Cards -->
+                <div class="col-span-3 space-y-4">
+                  <!-- KPI Card 1 -->
+                  <div class="bg-white rounded-lg shadow-md border border-slate-200 p-4">
+                    <p class="text-xs font-medium text-slate-500 mb-2">VENTAS TOTALES</p>
+                    <p class="text-2xl font-bold text-slate-900 mb-1">S/ 428.5K</p>
+                    <div class="flex items-center gap-1 text-xs text-green-600">
+                      <i data-lucide="trending-up" class="w-3 h-3"></i>
+                      <span>+15.2%</span>
+                    </div>
+                  </div>
+
+                  <!-- KPI Card 2 -->
+                  <div class="bg-white rounded-lg shadow-md border border-slate-200 p-4">
+                    <p class="text-xs font-medium text-slate-500 mb-2">PEDIDOS PROCESADOS</p>
+                    <p class="text-2xl font-bold text-slate-900 mb-1">1,247</p>
+                    <div class="flex items-center gap-1 text-xs text-green-600">
+                      <i data-lucide="trending-up" class="w-3 h-3"></i>
+                      <span>+18.3%</span>
+                    </div>
+                  </div>
+
+                  <!-- KPI Card 3 -->
+                  <div class="bg-white rounded-lg shadow-md border border-slate-200 p-4">
+                    <p class="text-xs font-medium text-slate-500 mb-2">TASA APROBACIÓN</p>
+                    <p class="text-2xl font-bold text-slate-900 mb-1">91.5%</p>
+                    <div class="flex items-center gap-1 text-xs text-blue-600">
+                      <i data-lucide="minus" class="w-3 h-3"></i>
+                      <span>-2.1%</span>
+                    </div>
+                  </div>
+
+                  <!-- KPI Card 4 -->
+                  <div class="bg-white rounded-lg shadow-md border border-slate-200 p-4">
+                    <p class="text-xs font-medium text-slate-500 mb-2">DEVOLUCIONES</p>
+                    <p class="text-2xl font-bold text-slate-900 mb-1">84</p>
+                    <div class="flex items-center gap-1 text-xs text-red-600">
+                      <i data-lucide="trending-down" class="w-3 h-3"></i>
+                      <span>-5.7%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Center: Main Chart -->
+                <div class="col-span-6 bg-white rounded-lg shadow-md border border-slate-200 p-5">
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Evolución de Ventas Mensual</h3>
+                    <div class="flex items-center gap-2">
+                      <button class="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        <i data-lucide="more-vertical" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Simulated Bar Chart -->
+                  <div class="h-64 flex items-end justify-between gap-2">
+                    <div class="flex-1 flex flex-col items-center gap-2">
+                      <div class="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t" style="height: 45%;"></div>
+                      <span class="text-xs text-slate-500">Ene</span>
+                    </div>
+                    <div class="flex-1 flex flex-col items-center gap-2">
+                      <div class="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t" style="height: 52%;"></div>
+                      <span class="text-xs text-slate-500">Feb</span>
+                    </div>
+                    <div class="flex-1 flex flex-col items-center gap-2">
+                      <div class="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t" style="height: 68%;"></div>
+                      <span class="text-xs text-slate-500">Mar</span>
+                    </div>
+                    <div class="flex-1 flex flex-col items-center gap-2">
+                      <div class="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t" style="height: 78%;"></div>
+                      <span class="text-xs text-slate-500">Abr</span>
+                    </div>
+                    <div class="flex-1 flex flex-col items-center gap-2">
+                      <div class="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t" style="height: 85%;"></div>
+                      <span class="text-xs text-slate-500">May</span>
+                    </div>
+                    <div class="flex-1 flex flex-col items-center gap-2">
+                      <div class="w-full bg-gradient-to-t from-blue-600 to-blue-500 rounded-t shadow-lg" style="height: 100%;"></div>
+                      <span class="text-xs font-semibold text-blue-600">Jun</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right: Donut Chart + Table -->
+                <div class="col-span-3 space-y-4">
+                  <!-- Donut Chart -->
+                  <div class="bg-white rounded-lg shadow-md border border-slate-200 p-4">
+                    <h3 class="text-xs font-semibold text-slate-900 mb-3">Ventas por Distribuidor</h3>
+                    <div class="flex items-center justify-center mb-3">
+                      <div class="relative w-32 h-32">
+                        <!-- Simulated Donut -->
+                        <svg viewBox="0 0 100 100" class="w-full h-full transform -rotate-90">
+                          <circle cx="50" cy="50" r="40" fill="none" stroke="#DBEAFE" stroke-width="12"></circle>
+                          <circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" stroke-width="12" stroke-dasharray="157 251" stroke-linecap="round"></circle>
+                          <circle cx="50" cy="50" r="40" fill="none" stroke="#8B5CF6" stroke-width="12" stroke-dasharray="94 251" stroke-dashoffset="-157" stroke-linecap="round"></circle>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                          <span class="text-lg font-bold text-slate-900">100%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="space-y-2 text-xs">
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                          <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          <span class="text-slate-600">Dimexa</span>
+                        </div>
+                        <span class="font-semibold text-slate-900">62.5%</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                          <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
+                          <span class="text-slate-600">Química</span>
+                        </div>
+                        <span class="font-semibold text-slate-900">37.5%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Top Products Table -->
+                  <div class="bg-white rounded-lg shadow-md border border-slate-200 p-4">
+                    <h3 class="text-xs font-semibold text-slate-900 mb-3">Top Productos</h3>
+                    <div class="space-y-2 text-xs">
+                      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span class="text-slate-600">Paracetamol</span>
+                        <span class="font-semibold text-slate-900">2.4K</span>
+                      </div>
+                      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span class="text-slate-600">Ibuprofeno</span>
+                        <span class="font-semibold text-slate-900">1.9K</span>
+                      </div>
+                      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span class="text-slate-600">Amoxicilina</span>
+                        <span class="font-semibold text-slate-900">1.6K</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span class="text-slate-600">Omeprazol</span>
+                        <span class="font-semibold text-slate-900">1.4K</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Power BI Branding Overlay -->
+            <div class="absolute bottom-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm border border-slate-200">
+              <svg class="w-5 h-5" viewBox="0 0 23 23">
+                <path d="M0 12.5h11v10.5H0V12.5z" fill="#F2C811"/>
+                <path d="M12.5 0h10.5v23H12.5V0z" fill="#F25022"/>
+                <path d="M0 0h11v11H0V0z" fill="#7FBA00"/>
+              </svg>
+              <span class="text-xs font-semibold text-slate-700">Power BI</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Report Actions -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <button class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors shadow-sm">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              Exportar PDF
+            </button>
+            <button class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors shadow-sm">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              Exportar Excel
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <i data-lucide="clock" class="w-4 h-4"></i>
+            <span>Última actualización: Hace 5 minutos</span>
+          </div>
+        </div>
+
+        <!-- Report Gallery -->
+        <div class="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 class="text-base font-semibold text-slate-900 mb-4">Otros Reportes Disponibles</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Report Card 1 -->
+            <div class="border border-slate-200 rounded-lg p-4 hover:shadow-lg cursor-pointer transition-all group">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                  <i data-lucide="users" class="w-5 h-5 text-blue-600"></i>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-900">Rendimiento por Vendedor</h4>
+              </div>
+              <p class="text-xs text-slate-500 mb-3">Métricas detalladas de desempeño individual y comparativas de equipo.</p>
+              <button class="text-xs font-medium text-primary hover:underline">Ver reporte →</button>
+            </div>
+
+            <!-- Report Card 2 -->
+            <div class="border border-slate-200 rounded-lg p-4 hover:shadow-lg cursor-pointer transition-all group">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-green-50 rounded-lg group-hover:bg-green-100 transition-colors">
+                  <i data-lucide="percent" class="w-5 h-5 text-green-600"></i>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-900">Análisis de Comisiones</h4>
+              </div>
+              <p class="text-xs text-slate-500 mb-3">Histórico de comisiones pagadas y proyecciones por distribuidor.</p>
+              <button class="text-xs font-medium text-primary hover:underline">Ver reporte →</button>
+            </div>
+
+            <!-- Report Card 3 -->
+            <div class="border border-slate-200 rounded-lg p-4 hover:shadow-lg cursor-pointer transition-all group">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-red-50 rounded-lg group-hover:bg-red-100 transition-colors">
+                  <i data-lucide="package-x" class="w-5 h-5 text-red-600"></i>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-900">Devoluciones & Recuperos</h4>
+              </div>
+              <p class="text-xs text-slate-500 mb-3">Análisis de causas de devolución y su impacto financiero.</p>
+              <button class="text-xs font-medium text-primary hover:underline">Ver reporte →</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+Draw.io Architecture URL:
+https://app.diagrams.net/?pv=0&grid=0#create=%7B%22type%22%3A%22xml%22%2C%22compressed%22%3Atrue%2C%22data%22%3A%227Vxbc5s6EP41fmzGgC%2F4Ed%2FSzCStj51pH8%2FIICK1AjFCOHF%2B%2FVkJsMHCbdrYMONDp0nsBYTYbz9Je0EdaxK83nMUbZ%2BYh2nH7HqvHWvaMU2jZ5od%2Bb%2Fr7VPJcNRLBT4nXnbSUbAibzgTdjNpQjwcl04UjFFBorLQZWGIXVGSIc7ZS%2Fm0DaPlu0bIx5pg5SKqS78TT2xTqTkadY8HPmPib7Nbj7rZgQDlJ2eCeIs89lIQWbOONeGMifRT8DrBVCov10t2Xcecnznh0DeOQ%2FHOazI4dogm2ROOv35xFp%2Bd5ROIP8GPkwgGnSdvyCWdidUZWyFIF9gjHovh0x5%2BpnjHaOISFuI4v%2Bwt4Rj%2BLrEP4o7lwOcVS0AJcCzAnLhIdcymSKCgY44yrYh9rmrOktDDsp9Gxxq%2FbInAqwi58ugLGBfItiKg2eENoXTCKOPqWgt7m95mDfJYcPYTF44MXBuvN%2FIKFopVdjfZAqLEh35OKd6A8sY7zAX0kTqZWDB5xxg6QEL%2FWX6Z2kfBo7poClaaNZwartGD75mGoT38ehYo42ABQB3MAiy4VGx2QY7jvvz1pWiBOUO2BevrDzIhyszePzRdMgv4kFlGtZVYmpXMOTwlDj1pCowLRC8K32a4WW82VfDZCI3cERzxULw9tC6%2FLJAQmEuoYETp9i6EqF1hKUWAzcsA3OuXAB72NYCtfgW%2B5oXw7Wn45qxnoWpngIJIPWn3kfnEbcH%2BENjG6HdoD4ZXRLuvoT2FMVhii%2FaYt9h%2BBFvDMKy%2FAtfqXQbcgQbuCrsJJ2J%2FQuQHDx5JiVu8P4C33R3%2BdujuXZHMQw3v2atUp5yRuw8wR%2Fs8G8ZbmD%2BwADOGRqMw2%2FoMDRDvQWFxi%2ByHkO1b%2FUaRHWnI5gvq7jcscWRcOlUDKjW55rJdc%2BAL9fSpUGqlZAFDKfkUK0U5RjeCRx27KZKOdIHWQ9OGDg7zhg43fMHrVHlIqfV4d%2BXScXDlpFlI9126dlHuA6bdgJ6lPcl7d2KW4PBG8iMJlI89zv5Ot0JI591RTzZHUXTnEQSjVhDfhRiam5PAh9%2BUrOVh6VZCw3Mfh5jLTs%2BXOGYJd%2FG%2F92D4UXwX73xpgnGU%2Bv8b8iqttWjzuXm6YCOw4DlnoLn0Ea0xXbCYqHHUmq6ZgMUxnEBPDhzaU4%2FmnN5FSb%2Bd3Cognic1pNm2To8SI0PwtU%2Fom4kuQIpBmRJGvmAtcMIwKzgx6l%2BEErkrW8WJqTRBsk5IY7zwTnqguIEiztalCIlUp49jcRS1NLkxmphGwzwxNJ58YYJsQHGVsbprcuU74z83VAY0ZaQvrOiGmjPCBO9U2LCdPG6VFT1r1Cwr9Ji2o43O5Yh1fcTQ5wlFC6%2BiOy0lboYSfbthSugB%2FIm0QMegbkLlgn7CAhLXzga33IkAh3GiFlyKFK7Wp5YSN0OJYdOzhJ7zyKJlxcF55Szq5ENMQpez8CTX6rJDV7rO4qElw82RwW56ftBTQqnTALJntAZ9XZUEy2NgKeJAARIdJ4GYUeISkXjK1VaiHWgVtSy4ORYYhmU1SwM9eZb7CcfRuF4%2BnOOAd9qvlg23xgbTbpgNempxwZmXuKKmaWGCROYfMP%2BYdMi6EJdXZ63h347h95qeBvRka%2Boe1zoJnDjomkesEgwcu0mEeRtHvUUe9JueAPTU9GoL3V8womz7a0hJeGUWODRAgB0KCGjtwAOPuUkgBXFaQzydfYOb%2F%2BOoMuKWCLfuF5i9eolg6vnoJ%2BLCqMs20rpnoVCJ4YfplbmQCFmyV86qfQXp1rzrqueRdX1Pc6flwO1xwDaHjU4Gpp5rTiOSs%2BVJXPI6xv8QqrAPJzAJTOSbO8gVCUf5QshD6WQQICxRaddDt1htMTKapYBZUZb0Iivmu%2BMHmVNG8XbNEPfia4eHIgZ6VPVFoDyXHKOlUem1rDaBdst06PebrT6qeCtswjHiBzNM1%2BbL2eo5nyD0l%2Fyw5%2BO8wheMest8FiI6O0rH5Wrm4zmPTGldCn9gIfYZLigBN6FkSSkm%2BduaEjYceo58F1TaCWXuz1Q0J5RW1BkbVcXQxsYcWcMDkPIpfg2jDOJKApRqfmE687EopmB0tDmmSJBdufmPIlf5vte5tWWL2TnMCu%2FtXh8zPUV3L6tLQa1cKyBqeVeNYV5YXCLeoEYQBy3xLgJarczT8yDPnPg%2B5lmtqyxpLUx6NwbaL173seFJ7b%2FHtV9BRqNGXO3f44qqUq0twO8EeFABsFkjwHr8ehYgQqvr01tU34mqUYFqjcOxpQdjHVck4C%2B%2BqZUQLIrQDQ7DfwmW2eyCx9KjhhMkU5oKKvWKVIK4p74VoxUteIWq7RJ4do3gmRXvlsvQk4Jr9uqqvZ14Ho1qMTuH2ahGzPSgzP3sOW2BqBA64%2BlOEPbn5%2BfFqvUND8j1KtyMGpejlh6UWR3KwdX4eFIOVaiEagE8A2Baw1YTgNX76uwwj%2FFxRzrG%2F09LTfmkg4t6iGaNDoQ1aBG9MKJ2w4gOK0r7wjihomqIbYfVM7mKOkdVPUqzHDsTFW%2Fj4DDkJWCFXa6WjEofYtT69O%2FF2Ow2m5Cy9EjNIYWe56ofsa%2F2mzwkstenifVStn3FKJG7U6oSRRXP29Dkx8krRhXXTVMdV10Yg4mFXlqCMofBH3CiKtRQ1QwDZMrNCEyxVI4aYaYITsa7rIbxkhs4qX9VZrS2XMuzKwzuT3ZrKmzOpCW%2FL78PZs%2Bq2IzJrkhpH%2FLcf2aIHbmPab7hrjpW2LbYmv0H%22%7D
+
+Abrir en el navegador para ver y editar el diagrama.
+Generado por: MCP Azure Architecture
+
+COMPONENTES INCLUIDOS:
+======================
+
+Frontend Portal:
+- Portal Vendedores (Power Pages)
+- Portal Distribuidores (Power Pages)
+
+Automation & Logic:
+- Notificación Pedidos (Power Automate)
+- Aprobación Devoluciones (Power Automate)
+- Cálculo Comisiones (Power Automate)
+- Integración SAP (Power Automate)
+
+Data Layer:
+- Pedido Table (Dataverse)
+- Devolución Table (Dataverse)
+- Producto Table (Dataverse)
+- Comisión Table (Dataverse)
+- SharePoint Online (Document storage)
+
+Security & Identity:
+- Microsoft Entra ID (OAuth2.0 + MFA)
+
+Analytics:
+- Power BI Dashboards (Reportes gerenciales)
+
+External Integration:
+- SAP ERP API (Inventario y facturas)
+
+CONEXIONES PRINCIPALES:
+========================
+- Portales → Dataverse (REST API)
+- Portales → Entra ID (Autenticación)
+- Dataverse → Power Automate (Triggers)
+- Power Automate → SAP API (HTTPS)
+- Power Automate → SharePoint (Exportación Excel)
+- Dataverse → Power BI (Connector)

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consulta de Pedidos — BONAPHARM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#1D4ED8', hover: '#1E40AF', light: '#DBEAFE' },
+            accent: { DEFAULT: '#0EA5E9', hover: '#0284C7' },
+            success: { DEFAULT: '#059669', light: '#D1FAE5' },
+          },
+          fontFamily: { sans: ['Inter', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 font-sans antialiased text-slate-900">
+
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col flex-shrink-0">
+      <div class="h-16 flex items-center px-6 border-b border-slate-200">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+          </div>
+          <span class="font-bold text-lg text-slate-900">BONAPHARM</span>
+        </div>
+      </div>
+      <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+        <a href="02-dashboard.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+          <span>Dashboard</span>
+        </a>
+        <div class="pt-4 pb-2 px-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Portal Vendedor</p>
+        </div>
+        <a href="03-registro-pedidos.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+          <span>Registro de Pedidos</span>
+        </a>
+        <a href="04-consulta-pedidos.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary-light text-primary font-medium cursor-pointer">
+          <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+          <span>Consulta de Pedidos</span>
+        </a>
+        <div class="pt-4 pb-2 px-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Portal Distribuidor</p>
+        </div>
+        <a href="05-aprobacion-pedidos.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="check-circle" class="w-5 h-5"></i>
+          <span>Aprobación de Pedidos</span>
+        </a>
+        <a href="06-gestion-devoluciones.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="package-x" class="w-5 h-5"></i>
+          <span>Gestión Devoluciones</span>
+        </a>
+        <a href="07-calculo-comisiones.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="percent" class="w-5 h-5"></i>
+          <span>Cálculo Comisiones</span>
+        </a>
+        <div class="pt-4 pb-2 px-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Reportes</p>
+        </div>
+        <a href="08-reportes.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors duration-150">
+          <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+          <span>Power BI Reports</span>
+        </a>
+      </nav>
+      <div class="border-t border-slate-200 p-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white text-sm font-semibold">JR</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-900 truncate">Juan Rodríguez</p>
+            <p class="text-xs text-slate-500 truncate">Vendedor</p>
+          </div>
+          <button class="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 overflow-y-auto">
+
+      <!-- TOPBAR -->
+      <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-10">
+        <div>
+          <h1 class="text-lg font-semibold text-slate-900">Consulta de Pedidos</h1>
+          <p class="text-xs text-slate-500">Historial y seguimiento de solicitudes</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            Exportar
+          </button>
+        </div>
+      </header>
+
+      <!-- PAGE CONTENT -->
+      <div class="p-6 space-y-6">
+
+        <!-- Toolbar -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <!-- Search -->
+              <div class="relative flex-1 lg:flex-initial">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                <input
+                  type="text"
+                  placeholder="Buscar por código, cliente..."
+                  class="pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full lg:w-64 transition-all"
+                />
+              </div>
+
+              <!-- Filter: Estado -->
+              <select class="px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition-all">
+                <option>Todos los estados</option>
+                <option>Enviado</option>
+                <option>Aprobado</option>
+                <option>Rechazado</option>
+              </select>
+
+              <!-- Filter: Fecha -->
+              <select class="px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer transition-all">
+                <option>Último mes</option>
+                <option>Últimos 3 meses</option>
+                <option>Último año</option>
+                <option>Personalizado</option>
+              </select>
+            </div>
+
+            <button class="flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-hover cursor-pointer transition-colors w-full lg:w-auto justify-center">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              Nuevo Pedido
+            </button>
+          </div>
+        </div>
+
+        <!-- Orders Table -->
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50">
+                  <th class="text-left px-4 py-3 font-medium text-slate-500">Código</th>
+                  <th class="text-left px-4 py-3 font-medium text-slate-500">Cliente</th>
+                  <th class="text-left px-4 py-3 font-medium text-slate-500">Representante</th>
+                  <th class="text-left px-4 py-3 font-medium text-slate-500">Fecha</th>
+                  <th class="text-right px-4 py-3 font-medium text-slate-500">Total</th>
+                  <th class="text-left px-4 py-3 font-medium text-slate-500">Estado</th>
+                  <th class="text-center px-4 py-3 font-medium text-slate-500">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <!-- Row 1 -->
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 py-3">
+                    <span class="font-mono text-xs font-semibold text-primary">PED-2025-0847</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <p class="font-medium text-slate-900">Farmacia San José S.A.C.</p>
+                    <p class="text-xs text-slate-500">RUC: 20543876921</p>
+                  </td>
+                  <td class="px-4 py-3 text-slate-600">María González</td>
+                  <td class="px-4 py-3 text-slate-600">04 Mar 2025</td>
+                  <td class="px-4 py-3 text-right font-semibold text-slate-900">S/ 3,805.50</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Aprobado
+                    </span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center justify-center gap-1">
+                      <button class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer transition-colors">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                      <button class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 2 -->
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 py-3">
+                    <span class="font-mono text-xs font-semibold text-primary">PED-2025-0846</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <p class="font-medium text-slate-900">Botica Cruz Verde E.I.R.L.</p>
+                    <p class="text-xs text-slate-500">RUC: 20678912345</p>
+                  </td>
+                  <td class="px-4 py-3 text-slate-600">Carlos Pérez</td>
+                  <td class="px-4 py-3 text-slate-600">03 Mar 2025</td>
+                  <td class="px-4 py-3 text-right font-semibold text-slate-900">S/ 5,432.00</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700">
+                      <span class="w-1.5 h-1.5 rounded-full bg-yellow-500"></span> Enviado
+                    </span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center justify-center gap-1">
+                      <button class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer transition-colors">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                      <button class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 3 -->
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 py-3">
+                    <span class="font-mono text-xs font-semibold text-primary">PED-2025-0845</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <p class="font-medium text-slate-900">Farmacia Universal S.A.</p>
+                    <p class="text-xs text-slate-500">RUC: 20123498765</p>
+                  </td>
+                  <td class="px-4 py-3 text-slate-600">Ana Torres</td>
+                  <td class="px-4 py-3 text-slate-600">02 Mar 2025</td>
+                  <td class="px-4 py-3 text-right font-semibold text-slate-900">S/ 2,140.00</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+                      <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Rechazado
+                    </span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center justify-center gap-1">
+                      <button class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer transition-colors">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                      <button class="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded cursor-pointer transition-colors">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 4 -->
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 py-3">
+                    <span class="font-mono text-xs font-semibold text-primary">PED-2025-0844</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <p class="font-medium text-slate-900">Botica Los Andes S.A.C.</p>
+                    <p class="text-xs text-slate-500">RUC: 20345678901</p>
+                  </td>
+                  <td class="px-4 py-3 text-slate-600">Luis Ramírez</td>
+                  <td class="px-4 py-3 text-slate-600">01 Mar 2025</td>
+                  <td class="px-4 py-3 text-right font-semibold text-slate-900">S/ 8,120.00</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Aprobado
+                    </span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center justify-center gap-1">
+                      <button class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer transition-colors">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                      <button class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 5 -->
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-4 py-3">
+                    <span class="font-mono text-xs font-semibold text-primary">PED-2025-0843</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <p class="font-medium text-slate-900">Farmacia El Pueblo E.I.R.L.</p>
+                    <p class="text-xs text-slate-500">RUC: 20987654321</p>
+                  </td>
+                  <td class="px-4 py-3 text-slate-600">Sandra Flores</td>
+                  <td class="px-4 py-3 text-slate-600">28 Feb 2025</td>
+                  <td class="px-4 py-3 text-right font-semibold text-slate-900">S/ 4,650.00</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Aprobado
+                    </span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center justify-center gap-1">
+                      <button class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer transition-colors">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                      <button class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="border-t border-slate-200 px-4 py-3 flex items-center justify-between">
+            <span class="text-sm text-slate-500">Mostrando 1–5 de 124 pedidos</span>
+            <div class="flex items-center gap-1">
+              <button class="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+              </button>
+              <button class="px-3 py-1 text-sm bg-primary text-white rounded font-medium">1</button>
+              <button class="px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">2</button>
+              <button class="px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">3</button>
+              <span class="px-2 text-slate-400">...</span>
+              <button class="px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded cursor-pointer transition-colors">25</button>
+              <button class="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded cursor-pointer transition-colors">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

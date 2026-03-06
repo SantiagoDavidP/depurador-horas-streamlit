@@ -1,0 +1,294 @@
+{
+  "project_metadata": {
+    "name": "Automatizacion_Pedidos_Devoluciones",
+    "objective": "Implementar una plataforma digital integrada basada en Power Platform que automatice y optimice los procesos de toma y aprobacion de pedidos, calculo de comisiones y recuperos, y gestion de devoluciones.",
+    "target_audience": "Vendedores, Administradores Comerciales, Finanzas y Distribuidores de BONAPHARM",
+    "timeline_weeks": 13,
+    "budget_usd": 26000.0,
+    "client_name": "BONAPHARM DEL PERU"
+  },
+  "architecture_and_stack": {
+    "frontend": "Microsoft Power Pages",
+    "backend": "Microsoft Power Automate",
+    "database": "Microsoft Dataverse",
+    "infrastructure": "Microsoft Power Platform / Azure",
+    "additional_services": [
+      "Power BI",
+      "SharePoint",
+      "Microsoft Entra ID",
+      "SAP API"
+    ]
+  },
+  "project_structure": {
+    "description": "Estructura logica de la solucion en Power Platform",
+    "tree": "BONAPHARM_Solution/\n├── Dataverse/\n│   ├── Tables/\n│   │   ├── Pedido\n│   │   ├── DetallePedido\n│   │   ├── Devolucion\n│   │   ├── Producto\n│   │   └── Comision\n│   └── SecurityRoles/\n├── PowerPages/\n│   ├── Portals/\n│   │   ├── PortalVendedores\n│   │   └── PortalDistribuidores\n├── PowerAutomate/\n│   ├── Flows/\n│   │   ├── NotificacionPedidos\n│   │   ├── AprobacionDevoluciones\n│   │   ├── CalculoComisiones\n│   │   └── IntegracionSAP\n├── PowerBI/\n│   ├── Dashboards/\n│   │   └── ReporteGerencial.pbix\n└── SharePoint/\n    └── DocumentLibraries/\n        ├── DEV\n        └── QA"
+  },
+  "data_models": [
+    {
+      "entity_name": "Pedido",
+      "description": "Registro principal de solicitudes de venta",
+      "attributes": {
+        "id": "UUID",
+        "codigo_pedido": "String",
+        "fecha": "DateTime",
+        "cliente_ruc": "String",
+        "representante": "String",
+        "condicion_pago": "String",
+        "estado": "String",
+        "total": "Decimal"
+      },
+      "relationships": [
+        "One-to-Many with DetallePedido",
+        "One-to-Many with Devolucion"
+      ]
+    },
+    {
+      "entity_name": "DetallePedido",
+      "description": "Lineas de productos dentro de un pedido",
+      "attributes": {
+        "id": "UUID",
+        "pedido_id": "UUID",
+        "producto_id": "UUID",
+        "cantidad": "Integer",
+        "precio_unitario": "Decimal",
+        "bonificacion": "Integer",
+        "subtotal": "Decimal",
+        "tipo": "String"
+      },
+      "relationships": [
+        "Many-to-One with Pedido",
+        "Many-to-One with Producto"
+      ]
+    },
+    {
+      "entity_name": "Devolucion",
+      "description": "Registro de solicitudes de devolucion de productos",
+      "attributes": {
+        "id": "UUID",
+        "codigo_devolucion": "String",
+        "pedido_id": "UUID",
+        "producto_id": "UUID",
+        "lote": "String",
+        "numero_factura": "String",
+        "cantidad": "Integer",
+        "razon": "String",
+        "estado": "String",
+        "valorizado": "Decimal"
+      },
+      "relationships": [
+        "Many-to-One with Pedido",
+        "Many-to-One with Producto"
+      ]
+    },
+    {
+      "entity_name": "Producto",
+      "description": "Catalogo de productos administrados",
+      "attributes": {
+        "id": "UUID",
+        "codigo_sap": "String",
+        "nombre": "String",
+        "molecula": "String",
+        "precio_vvf": "Decimal",
+        "distribuidor": "String",
+        "inafecto_devolucion": "Boolean"
+      },
+      "relationships": [
+        "One-to-Many with DetallePedido",
+        "One-to-Many with Devolucion"
+      ]
+    },
+    {
+      "entity_name": "Comision",
+      "description": "Calculo de comisiones y recuperos por distribuidor",
+      "attributes": {
+        "id": "UUID",
+        "distribuidor": "String",
+        "porcentaje": "Decimal",
+        "monto_calculado": "Decimal",
+        "mes_proceso": "String",
+        "estado": "String"
+      },
+      "relationships": []
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "GET",
+      "path": "/api/data/v9.2/productos",
+      "description": "Retrieve active products from Dataverse catalog",
+      "request_body": null,
+      "response_schema": {
+        "value": [
+          {
+            "id": "string",
+            "nombre": "string",
+            "codigo_sap": "string",
+            "precio_vvf": "number"
+          }
+        ]
+      },
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/data/v9.2/pedidos",
+      "description": "Create a new sales order",
+      "request_body": {
+        "cliente_ruc": "string",
+        "condicion_pago": "string",
+        "detalles": [
+          {
+            "producto_id": "string",
+            "cantidad": "integer",
+            "tipo": "string"
+          }
+        ]
+      },
+      "response_schema": {
+        "id": "string",
+        "codigo_pedido": "string",
+        "estado": "string"
+      },
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/data/v9.2/devoluciones",
+      "description": "Register a new return request",
+      "request_body": {
+        "pedido_id": "string",
+        "producto_id": "string",
+        "cantidad": "integer",
+        "razon": "string",
+        "numero_factura": "string"
+      },
+      "response_schema": {
+        "id": "string",
+        "codigo_devolucion": "string",
+        "estado": "string"
+      },
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/sap/inventory",
+      "description": "Fetch inventory and invoice data from SAP API",
+      "request_body": null,
+      "response_schema": {
+        "items": [
+          {
+            "codigo_sap": "string",
+            "stock": "integer",
+            "lote": "string"
+          }
+        ]
+      },
+      "auth_required": true
+    }
+  ],
+  "functional_requirements": [
+    {
+      "module_name": "Registro de Pedidos",
+      "user_stories": [
+        "As a Vendedor, I want to register a new order so that it can be processed by the commercial team.",
+        "As a Vendedor, I want to add products and bonuses to my order so that the final price is calculated automatically."
+      ],
+      "acceptance_criteria": [
+        "Given I am logged in as Vendedor, When I fill the order form and add products, Then the system calculates the total based on the distributor minimums and saves the order with 'Enviado' status.",
+        "Given an order in progress, When I add a product marked as 'Bonificacion', Then the system sets its price to 0 and does not add it to the final total."
+      ]
+    },
+    {
+      "module_name": "Aprobacion de Pedidos",
+      "user_stories": [
+        "As a Comercial, I want to review and approve or reject orders so that only valid orders are sent to distributors."
+      ],
+      "acceptance_criteria": [
+        "Given an order in 'Enviado' status, When I review the quantities and prices and click Approve, Then the order status changes to 'Aprobado' and an email notification is sent to the distributor."
+      ]
+    },
+    {
+      "module_name": "Gestion de Devoluciones",
+      "user_stories": [
+        "As a Comercial, I want to register a return request so that the distributor can process the returned items."
+      ],
+      "acceptance_criteria": [
+        "Given an existing invoiced order, When I select products to return, input the quantity, and provide a reason, Then the system creates a return record, calculates the 'Valorizado', and notifies the administrator."
+      ]
+    },
+    {
+      "module_name": "Calculo de Comisiones",
+      "user_stories": [
+        "As a Finanzas user, I want the system to calculate commissions automatically so that I can review them at the end of the month."
+      ],
+      "acceptance_criteria": [
+        "Given approved orders for Dimexa, When the monthly process runs, Then the system calculates a 10% commission and generates an Excel report.",
+        "Given approved orders for Quimica, When the monthly process runs, Then the system calculates a 13% commission based on the price difference."
+      ]
+    }
+  ],
+  "non_functional_requirements": {
+    "performance": [
+      "El sistema debe manejar un promedio de 500 solicitudes mensuales.",
+      "El sistema debe soportar una tasa de crecimiento del 20% mensual durante los proximos 24 meses."
+    ],
+    "security": [
+      "Cifrado automatico con AES-256 y TLS 1.2+.",
+      "Autenticacion Segura con Azure AD (Entra ID), OAuth2.0 y Open ID.",
+      "Soporte de MFA para usuarios del EntraID.",
+      "Prevencion contra Inyeccion SQL y XSS.",
+      "Configuracion mediante roles y permisos RBAC."
+    ],
+    "scalability": [
+      "Escalable horizontal y verticalmente en volumen de transacciones y usuarios concurrentes.",
+      "Interfaz responsive en resolucion maxima HD (desktop, tablets, smartphones)."
+    ],
+    "availability": [
+      "Tiempo de inactividad minimo del 99.99% planificado.",
+      "Respaldo incremental de base de datos en Azure durante el dia y full backup todos los dias.",
+      "El sistema no soportara capacidades offline."
+    ]
+  },
+  "environment_variables": [
+    {
+      "name": "ENTRA_ID_CLIENT_ID",
+      "description": "Client ID for Microsoft Entra ID App Registration",
+      "example": "12345678-abcd-1234-abcd-1234567890ab",
+      "required": true
+    },
+    {
+      "name": "ENTRA_ID_SECRET_KEY",
+      "description": "Secret Key for Microsoft Entra ID App Registration",
+      "example": "super_secret_key_value",
+      "required": true
+    },
+    {
+      "name": "DATAVERSE_ENVIRONMENT_URL",
+      "description": "Base URL for the Dataverse environment API",
+      "example": "https://org12345.crm.dynamics.com",
+      "required": true
+    },
+    {
+      "name": "SAP_API_BASE_URL",
+      "description": "Base URL for the external SAP API integration",
+      "example": "https://api.sap.bonapharm.com/v1",
+      "required": true
+    },
+    {
+      "name": "SHAREPOINT_SITE_URL",
+      "description": "URL for the SharePoint site used for document storage",
+      "example": "https://bonapharm.sharepoint.com/sites/PedidosDevoluciones",
+      "required": true
+    }
+  ],
+  "step_by_step_execution_plan": [
+    "az login",
+    "az ad app create --display-name \"Bonapharm_Pedidos_Devoluciones\" --sign-in-audience AzureADMyOrg",
+    "pac auth create --url https://org.crm.dynamics.com",
+    "pac admin create-environment --name \"BONAPHARM_DEV\" --type Sandbox --region latam",
+    "pac solution init --publisher-name BONAPHARM --publisher-prefix bona",
+    "pac paportal download --path ./PowerPages_Portal --webSiteId 00000000-0000-0000-0000-000000000000",
+    "pac solution pack --zipfile ./bin/Debug/BONAPHARM_Solution.zip",
+    "pac solution import --path ./bin/Debug/BONAPHARM_Solution.zip --environment https://org.crm.dynamics.com"
+  ]
+}
