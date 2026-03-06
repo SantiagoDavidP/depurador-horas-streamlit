@@ -103,7 +103,8 @@ class IndividualBusinessMixin:
         )
         consultant_name = str(metadata.get("employee") or metrics.nombre or "").strip()
 
-        total_cols = max(5, len(dataframe.columns))
+        actual_cols = len(dataframe.columns)
+        total_cols = max(5, actual_cols)
         end_col_letter = get_column_letter(total_cols)
 
         # Encabezado BANINTER + logo
@@ -112,7 +113,7 @@ class IndividualBusinessMixin:
         if self.client_logo_path:
             client_anchor_col = get_column_letter(max(6, total_cols - 1))
             if "baninter" in self.client_logo_path.stem.lower():
-                for col_idx in range(1, total_cols + 1):
+                for col_idx in range(1, actual_cols + 1):
                     header_value = dataframe.columns[col_idx - 1]
                     header_text = str(header_value).strip().lower()
                     if "fase/ciclo" in header_text or "tipo actividad" in header_text:

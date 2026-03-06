@@ -136,3 +136,26 @@ def test_postprocess_and_cleanup_preserve_footer():
     consolidator.clean_blank_rows_and_footer(ws)
     footer_values = [str(ws.cell(row=r, column=1).value or "") for r in range(1, ws.max_row + 1)]
     assert any(v.lower().startswith("elaborado por") for v in footer_values)
+
+
+def test_default_logo_resolution_uses_repo_assets():
+    nova_consolidator = TimeSheetConsolidator(
+        cliente="NOVA - TI",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
+    assert nova_consolidator.logo_path is not None
+    assert nova_consolidator.logo_path.exists()
+    assert nova_consolidator.logo_path.name.lower() in {"logobit.png", "logo.png"}
+    assert nova_consolidator.client_logo_path is not None
+    assert nova_consolidator.client_logo_path.exists()
+    assert nova_consolidator.client_logo_path.name.upper() == "NOVA.PNG"
+
+    baninter_consolidator = TimeSheetConsolidator(
+        cliente="BANINTER",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
+    assert baninter_consolidator.logo_path is not None
+    assert baninter_consolidator.logo_path.exists()
+    assert baninter_consolidator.client_logo_path is not None
+    assert baninter_consolidator.client_logo_path.exists()
+    assert baninter_consolidator.client_logo_path.name.upper() == "BANINTER.PNG"
