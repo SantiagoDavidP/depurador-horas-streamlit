@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from backend.application.parsing.models import ParsedSheet
 from backend.application.processing.baninter_processor import prepare_baninter_dataframe
 from backend.application.processing.data_cleaner import detect_and_remove_metadata_rows
-from backend.domain.parsing.excel_parser import ParsedSheet
 from backend.domain.models import ColumnMapping
-from backend.infrastructure.observability.perf import PerfCollector
-from backend.domain.profiles.profile_validations import run_profile_validations
-from backend.domain.validation.validators import ValidationIssue, run_all_validations, validate_mapping
-from backend.infrastructure.storage.azure_blob_storage_adapter import AzureBlobStorageAdapter
+from backend.shared.observability.perf import PerfCollector
+from backend.shared.tabular.pandas_mapper import from_pandas_table, to_pandas_table
+from backend.application.profiles.profile_validations import run_profile_validations
+from backend.application.validation.validators import ValidationIssue, run_all_validations, validate_mapping
 
 from .models import ProcessorResult
 
@@ -41,7 +41,7 @@ def process_parsed_sheet_impl(
     batch_fast_mode: bool = False,
     enable_debug_exports: bool = True,
 ) -> ProcessorResult:
-    df = parsed_sheet.dataframe.copy()
+    df = to_pandas_table(parsed_sheet.dataframe)
     df = self._drop_empty_columns(df)
     perf = PerfCollector()
     t_total = time.perf_counter()
@@ -270,12 +270,12 @@ def process_parsed_sheet_impl(
         if debug_detail_df is not None and debug_detail_clean is not None:
             debug_detail_df = pd.concat([debug_detail_df, debug_detail_clean], ignore_index=True)
 
-    workbook_bytes = self._export_workbook(
-        df_clean,
-        errors_df,
+    workbook_bytes = self.workbook_exporter.export_workbook(
+        from_pandas_table(df_clean),
+        from_pandas_table(errors_df),
         summary,
-        debug_hours_df=debug_hours_df,
-        debug_detail_df=debug_detail_df,
+        debug_hours_df=from_pandas_table(debug_hours_df) if debug_hours_df is not None else None,
+        debug_detail_df=from_pandas_table(debug_detail_df) if debug_detail_df is not None else None,
     )
     logger.info("TIMING: export_excel en %.2fs", time.perf_counter() - t_stage)
     output_filename = self._build_output_filename(source_name)
@@ -283,7 +283,9 @@ def process_parsed_sheet_impl(
     uploaded_original = None
     uploaded_corrected = None
     if upload_to_blob:
-        blob_storage = AzureBlobStorageAdapter()
+        blob_storage = getattr(self, "blob_storage", None)
+        if blob_storage is None:
+            raise RuntimeError("Blob storage port is not configured for this processor.")
         if original_excel_bytes and blob_name_original:
             try:
                 blob_storage.upload_bytes_to_blob(
@@ -320,8 +322,8 @@ def process_parsed_sheet_impl(
         validation_errors=validation_errors,
         corrections_log=corrections,
         summary=summary,
-        corrected_dataframe=corrected_snapshot,
-        errors_dataframe=errors_df,
+        corrected_dataframe=from_pandas_table(corrected_snapshot),
+        errors_dataframe=from_pandas_table(errors_df),
         uploaded_blob_original=uploaded_original,
         uploaded_blob_corrected=uploaded_corrected,
         metadata=metadata,

@@ -13,8 +13,9 @@ from typing import Optional, Dict, Any
 import pandas as pd
 import pyodbc
 
-from backend.domain.parsing.excel_parser import ParsedSheet
 from backend.adapters import DataSourceAdapter, DataSourceConfig
+from backend.application.parsing.models import ParsedSheet
+from backend.shared.tabular.pandas_mapper import from_pandas_table
 
 logger = logging.getLogger(__name__)
 
@@ -438,7 +439,7 @@ class FabricSQLAdapter(DataSourceAdapter):
 
             # Create ParsedSheet
             parsed_sheet = ParsedSheet(
-                dataframe=df_clean,
+                dataframe=from_pandas_table(df_clean),
                 header_row=1,  # Simulated header row
                 row_offset=2,  # Simulated data start row
                 sheet_name="SQL_Data",  # Virtual sheet name

@@ -5,15 +5,18 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from backend.domain.profiles.client_profiles import ClientProfile, ClientProfileManager
-from backend.domain.rates.collaborator_rates import get_collaborator_rates_manager
+from backend.application.parsing.models import ParsedSheet
+from backend.domain.profiles.client_profiles import ClientProfile
 from backend.domain.profiles.detectors import auto_detect_profile as detect_profile_basic
-from backend.domain.parsing.excel_parser import ParsedSheet, load_multiple_sheets
 from backend.domain.models import ColumnMapping
+from backend.infrastructure.config.client_profile_repository import get_client_profile_repository
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.parsing.excel_sheet_parser import load_multiple_sheets
+from backend.shared.tabular.pandas_mapper import to_pandas_table
 
 
 def get_profile_catalog() -> Dict[str, ClientProfile]:
-    manager = ClientProfileManager()
+    manager = get_client_profile_repository().load_manager()
     return {p.client_id: p for p in manager.list_profiles()}
 
 
@@ -82,7 +85,7 @@ def auto_detect_profile_from_parsed(
                 return pid
 
     # 2) fallback by columns
-    df = parsed.dataframe
+    df = to_pandas_table(parsed.dataframe)
     df_columns = [str(c).lower() for c in df.columns]
     best_match = None
     best_score = 0

@@ -1,10 +1,10 @@
 import pandas as pd
 
+from backend.application.parsing.models import ParsedSheet
 from backend.application.processing.normalization import ProcessingNormalizationMixin
 from backend.application.processing.service import TimeSheetProcessor
 from backend.domain.models import ColumnMapping
-from backend.domain.parsing.excel_parser import ParsedSheet
-from backend.infrastructure.ai.llm_corrector import CorrectionResult
+from backend.application.processing.correction_result import CorrectionResult
 
 
 class _LLMStub:
@@ -33,6 +33,22 @@ class _RoleValidatorStub:
         for d in descriptions:
             out.append(_RoleResult(bool(d.strip()), 0.8 if d.strip() else 0.0, declared_role, "ok"))
         return out
+
+
+class _BlobStorageStub:
+    def __init__(self):
+        self.uploads = []
+
+    def upload_bytes_to_blob(self, blob_name, data, *, overwrite=True):
+        self.uploads.append((blob_name, data, overwrite))
+
+    def download_blob_to_bytes(self, blob_name):
+        raise NotImplementedError
+
+
+class _WorkbookExporterStub:
+    def export_workbook(self, corrected_df, errors_df, summary, *, debug_hours_df=None, debug_detail_df=None):
+        return b"workbook-bytes"
 
 
 def test_timesheet_processor_helpers_and_apply_corrections():
@@ -75,6 +91,50 @@ def test_timesheet_processor_helpers_and_apply_corrections():
 
     assert processor._is_baninter_profile("cliente_talent", {}) is True
     assert processor._is_baninter_profile(None, {"company": "Banco Internacional"}) is True
+
+
+def test_timesheet_processor_uses_injected_blob_storage_port():
+    blob_storage = _BlobStorageStub()
+    processor = TimeSheetProcessor(
+        llm_corrector=_LLMStub(),
+        blob_storage=blob_storage,
+        workbook_exporter=_WorkbookExporterStub(),
+        role_validator=_RoleValidatorStub(),
+    )
+    mapping = ColumnMapping(date="Fecha", hours="Horas", description="Actividad", project="Proyecto")
+    parsed = ParsedSheet(
+        dataframe=pd.DataFrame(
+            {
+                "Fecha": ["2026-01-01"],
+                "Horas": [8],
+                "Actividad": ["trabajo detallado"],
+                "Proyecto": ["Proyecto X"],
+            }
+        ),
+        header_row=0,
+        row_offset=2,
+        sheet_name="Sheet1",
+        metadata={"company": "Nova"},
+    )
+
+    result = processor.process_parsed_sheet(
+        parsed_sheet=parsed,
+        mapping=mapping,
+        source_name="archivo.xlsx",
+        original_excel_bytes=b"original",
+        correct_spelling=False,
+        upload_to_blob=True,
+        blob_name_original="raw/blob.xlsx",
+        blob_name_corrected="clean/blob.xlsx",
+        enable_debug_exports=False,
+    )
+
+    assert result.uploaded_blob_original == "raw/blob.xlsx"
+    assert result.uploaded_blob_corrected == "clean/blob.xlsx"
+    assert [item[0] for item in blob_storage.uploads] == [
+        "raw/blob.xlsx",
+        "clean/blob.xlsx",
+    ]
 
 
 def test_normalization_ticket_and_validation_filtering():

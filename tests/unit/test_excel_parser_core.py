@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from openpyxl import Workbook
 
-from backend.domain.parsing import excel_parser as parser
+from backend.infrastructure.parsing import excel_sheet_parser as parser
 
 
 @pytest.mark.unit

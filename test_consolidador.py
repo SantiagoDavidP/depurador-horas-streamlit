@@ -25,6 +25,9 @@ from backend.consolidator import TimeSheetConsolidator
 from backend.batch_processor import BatchFileRequest, BatchProcessor
 from backend.processor import ColumnMapping, TimeSheetProcessor
 from backend.excel_parser import load_sheet_with_header
+from backend.infrastructure.composition.processing_factory import build_timesheet_processor
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.parsing.excel_sheet_parser_adapter import ExcelSheetParserAdapter
 
 # Configurar logging
 logging.basicConfig(
@@ -124,8 +127,8 @@ def process_files_from_directory(input_dir: Path) -> List[Tuple[pd.DataFrame, di
     logger.info("Encontrados %d archivos Excel", len(excel_files))
 
     consultores_data = []
-    processor = TimeSheetProcessor()
-    batch_processor = BatchProcessor(processor)
+    processor = build_timesheet_processor()
+    batch_processor = BatchProcessor(processor, sheet_parser=ExcelSheetParserAdapter())
 
     for file_path in excel_files:
         logger.info("Procesando: %s", file_path.name)
@@ -221,7 +224,10 @@ def main():
     logger.info("Total de consultores a consolidar: %d", len(consultores_data))
 
     # Crear consolidador
-    consolidator = TimeSheetConsolidator(cliente=args.cliente)
+    consolidator = TimeSheetConsolidator(
+        cliente=args.cliente,
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
 
     # Generar consolidado
     try:

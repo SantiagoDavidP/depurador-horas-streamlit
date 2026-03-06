@@ -1,0 +1,68 @@
+{
+  "batch_id": "batch-1",
+  "results": [
+    {
+      "file_name": "Victor Jaramillo.xlsx",
+      "sheet_name": "Victor Jaramillo",
+      "success": true,
+      "client_id": "cliente_talent",
+      "metadata": {
+        "company": "Banco Internacional",
+        "employee": "Victor Jaramillo",
+        "period_start": "2026-01-01",
+        "period_end": "2026-01-31",
+        "month_name": "January",
+        "year": 2026,
+        "report_date": "2026-01-31",
+        "period_source": "data_authority_final"
+      },
+      "summary": {
+        "total_registros": 2,
+        "total_errores": 1,
+        "horas_totales": 16.0,
+        "dias_con_problemas_horas": 0,
+        "errores_por_tipo": {
+          "completitud": 1
+        },
+        "errores_criticos": 0,
+        "errores_advertencia": 0,
+        "quality_score": 80.0
+      },
+      "errors": [
+        {
+          "fila": 0,
+          "tipo_error": "completitud",
+          "fecha": ""
+        }
+      ],
+      "employee_info": {
+        "metadata": "Victor Jaramillo",
+        "filename": "Resumen Actividades Recursos Baninter",
+        "final": "Victor Jaramillo"
+      },
+      "download_id": "file-2",
+      "output_filename": "Resumen Actividades Recursos Baninter_CORREGIDO.xlsx :: Victor Jaramillo",
+      "holiday_info": {
+        "month": 1,
+        "year": 2026,
+        "source": "holidays_lib",
+        "holiday_count": 1
+      },
+      "llm_enabled": false,
+      "llm_corrections_count": 0,
+      "baninter_business_id": "file-3",
+      "baninter_business_filename": "Victor_Jaramillo_BusinessIT_Victor_Jaramillo.xlsx"
+    }
+  ],
+  "skipped_sheets": [],
+  "consolidated": {
+    "download_id": "file-1",
+    "filename": "Consolidado_Banco_Internacional_1_Consultores.xlsx",
+    "consultores": 1,
+    "total_horas": 16.0
+  },
+  "baninter_zip": {
+    "download_id": "file-4",
+    "filename": "BANINTER_Individuales_BusinessIT.zip"
+  }
+}

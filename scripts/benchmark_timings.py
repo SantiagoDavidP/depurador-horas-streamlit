@@ -6,12 +6,12 @@ import time
 from pathlib import Path
 
 from backend.excel_parser import load_sheet_with_header, infer_column_mapping
-from backend.processor import TimeSheetProcessor
 from backend.detectors import auto_detect_profile
-from backend.client_profiles import ClientProfileManager
+from backend.infrastructure.config.client_profile_repository import get_client_profile_repository
+from backend.infrastructure.composition.processing_factory import build_timesheet_processor
 
 
-def _resolve_mapping(parsed, profile_manager: ClientProfileManager):
+def _resolve_mapping(parsed, profile_manager):
     metadata = parsed.metadata or {}
     profiles = list(profile_manager.list_profiles())
     auto_profile_id = auto_detect_profile("benchmark.xlsx", metadata, profiles)
@@ -27,8 +27,8 @@ def _resolve_mapping(parsed, profile_manager: ClientProfileManager):
 
 
 def process_file(path: Path) -> None:
-    processor = TimeSheetProcessor()
-    profile_manager = ClientProfileManager()
+    processor = build_timesheet_processor()
+    profile_manager = get_client_profile_repository().load_manager()
 
     file_bytes = path.read_bytes()
     parsed = load_sheet_with_header(file_bytes)

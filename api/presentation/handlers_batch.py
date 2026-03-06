@@ -21,10 +21,12 @@ from backend.application.consolidation.consolidator_integration import (
     generate_consolidated_from_batch_results,
     validate_batch_results_for_consolidation,
 )
-from backend.domain.parsing.excel_parser import infer_column_mapping, load_sheet_with_header
 from backend.domain.models import ColumnMapping
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.parsing.excel_sheet_parser import infer_column_mapping, load_sheet_with_header
+from backend.shared.tabular.pandas_mapper import to_pandas_table
 
-from api.presentation.dependencies import auth_provider, batch_processor, file_store
+from api.presentation.dependencies import auth_provider, batch_processor, file_store, timesheet_reporting
 from api.presentation.handlers_common import (
     _build_baninter_zip,
     _infer_client_id_for_file,
@@ -129,7 +131,7 @@ def process_batch(
         )
 
         dynamic_mapping = infer_column_mapping(
-            parsed.dataframe,
+            to_pandas_table(parsed.dataframe),
             profile_mapping,
         )
         mapping_to_use = dynamic_mapping or base_mapping
@@ -229,6 +231,8 @@ def consolidate_batch(
         batch_results=list(results),
         cliente=str(cliente_nombre),
         output_filename=str(output_filename),
+        reporting_port=timesheet_reporting,
+        collaborator_rates=get_collaborator_rates_manager(),
     )
 
     download_id = file_store.store_file(

@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from backend.domain.calendar.holiday_detector import HolidayDetector
+from backend.application.calendar.holiday_detector import HolidayDetector
+from backend.shared.tabular.pandas_mapper import to_pandas_table
 
 
 _ERROR_PRIORITY = [
@@ -73,6 +74,7 @@ def sanitize_payload(value: Any) -> Any:
 
 
 def sort_errors_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    df = to_pandas_table(df)
     if df is None or df.empty:
         return df
     sorted_df = df.copy()
@@ -85,6 +87,8 @@ def sort_errors_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def dataframe_to_records(df: Optional[pd.DataFrame]) -> List[Dict[str, Any]]:
+    if df is not None:
+        df = to_pandas_table(df)
     if df is None or df.empty:
         return []
     safe_df = df.copy()
@@ -107,6 +111,7 @@ def build_holiday_info(
     *,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
+    dataframe = to_pandas_table(dataframe)
     if dataframe is None or dataframe.empty:
         return None
 

@@ -14,7 +14,7 @@ from backend.adapters import DataSourceConfig
 from backend.adapters.adapter_factory import create_adapter
 from backend.adapters.excel_adapter import ExcelAdapter
 from backend.adapters.sql_adapter import FabricSQLAdapter
-from backend.domain.parsing.excel_parser import ParsedSheet
+from backend.application.parsing.models import ParsedSheet
 
 
 # ============================================================================

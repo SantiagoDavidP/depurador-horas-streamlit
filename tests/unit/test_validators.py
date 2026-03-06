@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from backend.domain.validation.validators import (
+from backend.application.validation.validators import (
     _get_ec_holidays,
     run_all_validations,
     validate_calendar_constraints,

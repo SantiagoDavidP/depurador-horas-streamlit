@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import logging
 import unicodedata
-from pathlib import Path
 import re
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from backend.domain.parsing.excel_parser import load_sheet_with_header
 from backend.domain.models import ColumnMapping
-from backend.domain.validation.validators import _coerce_hours_series
+from backend.application.validation.validators import _coerce_hours_series
 
 logger = logging.getLogger(__name__)
 
@@ -236,25 +234,3 @@ def prepare_baninter_dataframe(
 
     return work_df, report
 
-
-def process_baninter_excel(path: str | Path) -> Tuple[pd.DataFrame, Dict[str, object]]:
-    """Carga un Excel BANINTER desde disco y aplica tolerancia."""
-    path_obj = Path(path)
-    if not path_obj.exists():
-        raise FileNotFoundError(f"No existe el archivo: {path}")
-
-    excel_bytes = path_obj.read_bytes()
-    parsed = load_sheet_with_header(
-        excel_bytes,
-        header_keywords=["fecha", "horas", "tareas", "proyecto", "fase", "ciclo", "id"],
-    )
-
-    mapping = ColumnMapping(
-        date="Fecha",
-        hours="Horas",
-        description="Tareas",
-        project="Proyecto",
-    )
-
-    df_ready, report = prepare_baninter_dataframe(parsed.dataframe, mapping)
-    return df_ready, report

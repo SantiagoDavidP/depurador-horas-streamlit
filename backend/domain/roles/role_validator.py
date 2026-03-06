@@ -1,19 +1,17 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Actividades válidas para todos los roles (daily, reuniones, etc.)
+# Actividades vÃ¡lidas para todos los roles (daily, reuniones, etc.)
 UNIVERSAL_ACTIVITIES: Dict[str, List[str]] = {
     "daily": ["daily", "standup", "stand-up", "daily meeting", "daily scrum"],
-    "meetings": ["reunión", "meeting", "reunion", "junta", "sync", "alineación"],
-    "planning": ["planning", "planificación", "sprint planning", "estimación"],
+    "meetings": ["reuniÃ³n", "meeting", "reunion", "junta", "sync", "alineaciÃ³n"],
+    "planning": ["planning", "planificaciÃ³n", "sprint planning", "estimaciÃ³n"],
     "retrospective": ["retrospective", "retrospectiva", "retro"],
 }
 
@@ -31,12 +29,12 @@ class RoleValidationResult:
 class RoleActivityValidator:
     """Validador de coherencia entre rol declarado y actividades reportadas."""
 
-    # Umbral mínimo para marcar como coherente después de aplicar el scoring.
+    # Umbral mÃ­nimo para marcar como coherente despuÃ©s de aplicar el scoring.
     CONFIDENCE_THRESHOLD = 0.40
 
     STRONG_KEYWORDS: Dict[str, List[str]] = {
         "developer": [
-            "código",
+            "cÃ³digo",
             "codigo",
             "commit",
             "merge",
@@ -54,14 +52,14 @@ class RoleActivityValidator:
             "endpoint",
             "desarrollo",
             "feature",
-            "módulo",
+            "mÃ³dulo",
             "modulo",
             "componente",
             "bug fix",
             "debugging",
             "refactor",
-            "optimización de código",
-            "optimización",
+            "optimizaciÃ³n de cÃ³digo",
+            "optimizaciÃ³n",
         ],
         "qa": [
             "testing",
@@ -69,13 +67,13 @@ class RoleActivityValidator:
             "casos de prueba",
             "regression",
             "smoke test",
-            "automatización",
+            "automatizaciÃ³n",
             "automation",
             "selenium",
             "defect tracking",
             "bug report",
             "quality assurance",
-            "certificación",
+            "certificaciÃ³n",
             "certificacion",
             "plan de pruebas",
         ],
@@ -99,9 +97,9 @@ class RoleActivityValidator:
     }
 
     WEAK_KEYWORDS: Dict[str, List[str]] = {
-        "developer": ["análisis", "analisis", "revisión", "revision", "documentación", "documentacion", "integración", "integracion"],
-        "qa": ["validación", "validacion", "verificación", "verificacion"],
-        "devops": ["configuración", "configuracion", "optimización", "optimizacion", "soporte infraestructura"],
+        "developer": ["anÃ¡lisis", "analisis", "revisiÃ³n", "revision", "documentaciÃ³n", "documentacion", "integraciÃ³n", "integracion"],
+        "qa": ["validaciÃ³n", "validacion", "verificaciÃ³n", "verificacion"],
+        "devops": ["configuraciÃ³n", "configuracion", "optimizaciÃ³n", "optimizacion", "soporte infraestructura"],
     }
 
     FORBIDDEN_KEYWORDS: Dict[str, List[str]] = {
@@ -110,16 +108,16 @@ class RoleActivityValidator:
             "casos de prueba manuales",
             "plan de pruebas completo",
             "monitoreo de infraestructura",
-            "configuración de servidores",
+            "configuraciÃ³n de servidores",
         ],
         "qa": [
-            "deploy a producción",
+            "deploy a producciÃ³n",
             "pipeline",
-            "automatización de infraestructura",
+            "automatizaciÃ³n de infraestructura",
         ],
         "devops": [
-            "maquetación",
-            "diseño visual",
+            "maquetaciÃ³n",
+            "diseÃ±o visual",
             "casos de prueba manuales",
         ],
     }
@@ -133,22 +131,6 @@ class RoleActivityValidator:
         self.confidence_threshold = confidence_threshold
         self.role_keywords: Dict[str, List[str]] = {}
         self._load_keywords(role_taxonomy)
-
-    @classmethod
-    def from_json(
-        cls,
-        json_path: Path,
-        *,
-        confidence_threshold: float = CONFIDENCE_THRESHOLD,
-    ) -> RoleActivityValidator:
-        """Crea el validador a partir del archivo JSON de taxonomía."""
-        try:
-            with json_path.open("r", encoding="utf-8") as handle:
-                taxonomy = json.load(handle)
-        except Exception as exc:
-            logger.exception("No se pudo cargar la taxonomía de roles: %s", exc)
-            raise
-        return cls(taxonomy, confidence_threshold=confidence_threshold)
 
     def validate_activity_for_role(
         self,
@@ -164,8 +146,8 @@ class RoleActivityValidator:
         is_universal, activity_type = self._is_universal_activity(activity)
         if is_universal:
             reasoning = (
-                f"Actividad universal '{activity_type}' válida para cualquier rol. "
-                "Marcada como coherente automáticamente."
+                f"Actividad universal '{activity_type}' vÃ¡lida para cualquier rol. "
+                "Marcada como coherente automÃ¡ticamente."
             )
             return RoleValidationResult(
                 is_valid=True,
@@ -185,13 +167,13 @@ class RoleActivityValidator:
             and score >= self.confidence_threshold
         )
 
-        # Si el rol declarado no está en la taxonomía, marcamos inconsistente.
+        # Si el rol declarado no estÃ¡ en la taxonomÃ­a, marcamos inconsistente.
         if not is_known_role:
             return RoleValidationResult(
                 is_valid=False,
                 confidence_score=score,
                 rol_detectado=detected_role,
-                reasoning="El rol declarado no existe en la taxonomía configurada.",
+                reasoning="El rol declarado no existe en la taxonomÃ­a configurada.",
             )
 
         if matches:
@@ -205,7 +187,7 @@ class RoleActivityValidator:
         )
 
     def detect_role_from_activity(self, activity: str) -> str:
-        """Devuelve el rol más probable según el texto de la actividad."""
+        """Devuelve el rol mÃ¡s probable segÃºn el texto de la actividad."""
         detected_role, _, _, _ = self._score_activity(activity, "")
         return detected_role
 
@@ -214,7 +196,7 @@ class RoleActivityValidator:
         activities: List[str],
         declared_role: str,
     ) -> List[RoleValidationResult]:
-        """Evalúa un listado de actividades contra un mismo rol."""
+        """EvalÃºa un listado de actividades contra un mismo rol."""
         results: List[RoleValidationResult] = []
         for activity in activities:
             try:
@@ -226,7 +208,7 @@ class RoleActivityValidator:
                         is_valid=False,
                         confidence_score=0.0,
                         rol_detectado="Error",
-                        reasoning=f"Excepción durante la validación: {exc}",
+                        reasoning=f"ExcepciÃ³n durante la validaciÃ³n: {exc}",
                     )
                 )
         return results
@@ -236,23 +218,23 @@ class RoleActivityValidator:
     # ------------------------------------------------------------------
 
     def _load_keywords(self, role_taxonomy: Dict[str, Dict[str, List[str]]]) -> None:
-        """Combina keywords de la taxonomía con los sets adicionales."""
+        """Combina keywords de la taxonomÃ­a con los sets adicionales."""
         for role, payload in role_taxonomy.items():
             keywords: List[str] = []
             for values in payload.values():
                 keywords.extend(values)
-            # Añadimos sets predefinidos (fuertes/débiles) para reforzar.
+            # AÃ±adimos sets predefinidos (fuertes/dÃ©biles) para reforzar.
             keywords.extend(self.STRONG_KEYWORDS.get(role.lower(), []))
             keywords.extend(self.WEAK_KEYWORDS.get(role.lower(), []))
             normalized = sorted({kw.lower().strip() for kw in keywords if kw})
             if normalized:
                 self.role_keywords[role] = normalized
         if not self.role_keywords:
-            raise ValueError("La taxonomía de roles está vacía o mal formada.")
+            raise ValueError("La taxonomÃ­a de roles estÃ¡ vacÃ­a o mal formada.")
 
     @staticmethod
     def _is_universal_activity(description: str) -> Tuple[bool, Optional[str]]:
-        """Detecta si la actividad es universal (válida para cualquier rol)."""
+        """Detecta si la actividad es universal (vÃ¡lida para cualquier rol)."""
         desc_lower = description.lower()
         for activity_type, keywords in UNIVERSAL_ACTIVITIES.items():
             if any(keyword in desc_lower for keyword in keywords):
@@ -264,7 +246,7 @@ class RoleActivityValidator:
         description: str,
         declared_role: str,
     ) -> Tuple[str, float, List[str], str]:
-        """Calcula puntaje para cada rol y devuelve el rol más probable."""
+        """Calcula puntaje para cada rol y devuelve el rol mÃ¡s probable."""
         desc_lower = description.lower()
         best_role = "Desconocido"
         best_score = 0.0
@@ -301,35 +283,35 @@ class RoleActivityValidator:
         weak = self.WEAK_KEYWORDS.get(role, [])
         forbidden = self.FORBIDDEN_KEYWORDS.get(role, [])
 
-        # Keywords fuertes (+0.30). Bonus de contexto técnico (+0.10).
+        # Keywords fuertes (+0.30). Bonus de contexto tÃ©cnico (+0.10).
         for kw in strong:
             if kw in desc_lower:
                 score += 0.30
                 matches.append(kw)
                 if any(token in desc_lower for token in ["error", "problema", "implementa", "ejecut", "deploy", "despliegue"]):
                     score += 0.10
-                    reasoning_parts.append(f"Keyword fuerte '{kw}' con contexto técnico.")
+                    reasoning_parts.append(f"Keyword fuerte '{kw}' con contexto tÃ©cnico.")
                 else:
                     reasoning_parts.append(f"Keyword fuerte '{kw}' detectada.")
 
-        # Keywords débiles (+0.15).
+        # Keywords dÃ©biles (+0.15).
         for kw in weak:
             if kw in desc_lower:
                 score += 0.15
                 matches.append(f"{kw} (contexto)")
                 reasoning_parts.append(f"Keyword contextual '{kw}' detectada.")
 
-        # Descripción suficientemente detallada (+0.10).
+        # DescripciÃ³n suficientemente detallada (+0.10).
         if len(desc_lower) > 50:
             score += 0.10
-            reasoning_parts.append("Descripción amplia (>50 caracteres).")
+            reasoning_parts.append("DescripciÃ³n amplia (>50 caracteres).")
 
-        # Penalización por keywords prohibidas (-0.30).
+        # PenalizaciÃ³n por keywords prohibidas (-0.30).
         if any(forbidden_kw in desc_lower for forbidden_kw in forbidden):
             score -= 0.30
             reasoning_parts.append("Se detectaron keywords asociadas a otros roles.")
 
-        # Análisis contextual adicional (ej. developer haciendo pruebas).
+        # AnÃ¡lisis contextual adicional (ej. developer haciendo pruebas).
         if declared_role == "developer":
             context_result = self._analyze_developer_context(desc_lower)
             if context_result["is_appropriate"]:
@@ -347,15 +329,15 @@ class RoleActivityValidator:
 
     @staticmethod
     def _analyze_developer_context(desc_lower: str) -> Dict[str, Any]:
-        """Mejora confianza cuando un developer menciona pruebas/QA en contexto válido."""
+        """Mejora confianza cuando un developer menciona pruebas/QA en contexto vÃ¡lido."""
         developer_testing_patterns = [
             r"desarroll.{0,8}\spruebas",
-            r"pruebas?\s+de\s+(integración|integracion|unidad|unitarias)",
-            r"testing\s+de\s+(mi|su|el)\s+c[oó]digo",
+            r"pruebas?\s+de\s+(integraciÃ³n|integracion|unidad|unitarias)",
+            r"testing\s+de\s+(mi|su|el)\s+c[oÃ³]digo",
             r"para\s+pasar\s+a\s+qa",
             r"solicita\s+a\s+qa",
-            r"reunión\s+con\s+qa",
-            r"certificaci[oó]n\s+con\s+qa",
+            r"reuniÃ³n\s+con\s+qa",
+            r"certificaci[oÃ³]n\s+con\s+qa",
         ]
 
         if "prueba" in desc_lower or "testing" in desc_lower or "qa" in desc_lower:
@@ -370,5 +352,6 @@ class RoleActivityValidator:
         return {
             "is_appropriate": False,
             "confidence_adjustment": -0.20 if "qa" in desc_lower else 0.0,
-            "reason": "La mención de QA podría indicar actividad de otro rol.",
+            "reason": "La menciÃ³n de QA podrÃ­a indicar actividad de otro rol.",
         }
+

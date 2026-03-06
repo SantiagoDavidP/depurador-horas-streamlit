@@ -2,7 +2,8 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
 
-from backend.application.consolidation.service import TimeSheetConsolidator
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.reporting.consolidation.service import TimeSheetConsolidator
 
 
 def _tiny_png_bytes() -> bytes:
@@ -31,7 +32,10 @@ def test_logo_reference_and_normalization_helpers(tmp_path):
     bit_logo.write_bytes(_tiny_png_bytes())
     nova_logo.write_bytes(_tiny_png_bytes())
 
-    consolidator = TimeSheetConsolidator(cliente="NOVA - TI")
+    consolidator = TimeSheetConsolidator(
+        cliente="NOVA - TI",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
     consolidator.logo_path = bit_logo
     consolidator.client_logo_path = nova_logo
 
@@ -87,7 +91,10 @@ def test_logo_reference_and_normalization_helpers(tmp_path):
 
 
 def test_postprocess_and_cleanup_preserve_footer():
-    consolidator = TimeSheetConsolidator(cliente="NOVA - TI")
+    consolidator = TimeSheetConsolidator(
+        cliente="NOVA - TI",
+        collaborator_rates=get_collaborator_rates_manager(),
+    )
     wb = Workbook()
     ws = wb.active
     ws.title = "Consultor 1"

@@ -11,14 +11,17 @@ from api.serializers import sanitize_payload
 from api.services import auto_detect_profile_from_files, get_profile_catalog, is_baninter_result
 from backend.application.batch.batch_processor import BatchFileResult
 from backend.application.consolidation.consolidator_integration import generate_consolidated_from_batch_results
-from backend.domain.parsing.excel_parser import infer_column_mapping, load_multiple_sheets
 from backend.domain.models import ColumnMapping
+from backend.infrastructure.config.collaborator_rates_repository import get_collaborator_rates_manager
+from backend.infrastructure.parsing.excel_sheet_parser import infer_column_mapping, load_multiple_sheets
+from backend.shared.tabular.pandas_mapper import to_pandas_table
 
 from api.presentation.dependencies import (
     auth_provider,
     file_store,
     get_individual_thread_processor,
     processor,
+    timesheet_reporting,
 )
 from api.presentation.handlers_common import _build_baninter_zip, _serialize_result
 from api.presentation.parsing import parse_payload as _parse_payload
@@ -108,7 +111,7 @@ def process_individual(
         if emp_name.lower() in ["hoja1", "sheet1", "empleado", "consultor", "hoja", "sheet"]:
             skipped_sheets.append((sheet.sheet_name, [str(c) for c in list(sheet.dataframe.columns)]))
             continue
-        mapping_to_use = infer_column_mapping(sheet.dataframe, profile_mapping)
+        mapping_to_use = infer_column_mapping(to_pandas_table(sheet.dataframe), profile_mapping)
         if mapping_to_use is None:
             skipped_sheets.append((sheet.sheet_name, [str(c) for c in list(sheet.dataframe.columns)]))
             continue
@@ -221,6 +224,8 @@ def process_individual(
         batch_results=batch_results,
         cliente=cliente_nombre,
         output_filename=f"Consolidado_{cliente_nombre.replace(' ', '_')}_{len(batch_results)}_Consultores.xlsx",
+        reporting_port=timesheet_reporting,
+        collaborator_rates=get_collaborator_rates_manager(),
     )
     consolidated_download_id = file_store.store_file(
         consolidated.workbook_bytes,

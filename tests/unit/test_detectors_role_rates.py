@@ -1,10 +1,11 @@
 import json
-from pathlib import Path
 
 from backend.domain.profiles import detectors
 from backend.domain.profiles.client_profiles import ClientProfile
 from backend.domain.rates.collaborator_rates import CollaboratorRatesManager
 from backend.domain.roles.role_validator import RoleActivityValidator
+from backend.infrastructure.config.collaborator_rates_repository import JsonCollaboratorRatesRepository
+from backend.infrastructure.config.role_taxonomy_loader import load_role_validator
 
 
 def _profile() -> ClientProfile:
@@ -55,7 +56,8 @@ def test_role_validator_scoring_and_batch(tmp_path):
     taxonomy_path = tmp_path / "roles.json"
     taxonomy_path.write_text(json.dumps(taxonomy), encoding="utf-8")
 
-    validator = RoleActivityValidator.from_json(taxonomy_path)
+    validator = load_role_validator(taxonomy_path)
+    assert validator is not None
 
     universal = validator.validate_activity_for_role("Daily meeting con equipo", "developer")
     assert universal.is_valid is True
@@ -113,7 +115,7 @@ def test_collaborator_rates_manager_load_and_lookup(tmp_path):
     config_path = tmp_path / "collaborator_rates.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    manager = CollaboratorRatesManager(config_path=config_path)
+    manager = JsonCollaboratorRatesRepository(config_path=config_path).load_manager()
     found = manager.find_collaborator("Luis Avila")
     assert found is not None
     assert found.seniority == "Senior"
@@ -141,5 +143,20 @@ def test_collaborator_rates_manager_load_and_lookup(tmp_path):
     by_sen = manager.list_by_seniority("Senior")
     assert len(by_sen) == 1
 
-    manager.reload_config()
-    assert manager.find_collaborator("Luis Avila") is not None
+    reloaded = JsonCollaboratorRatesRepository(config_path=config_path).load_manager(force_reload=True)
+    assert reloaded.find_collaborator("Luis Avila") is not None
+
+
+def test_role_taxonomy_loader_handles_present_and_missing_files(tmp_path):
+    taxonomy = {
+        "developer": {"technical_skills": ["api", "sql", "commit"]},
+    }
+    taxonomy_path = tmp_path / "roles.json"
+    taxonomy_path.write_text(json.dumps(taxonomy), encoding="utf-8")
+
+    loaded = load_role_validator(taxonomy_path)
+    assert loaded is not None
+    assert loaded.detect_role_from_activity("commit sobre api") == "developer"
+
+    missing = load_role_validator(tmp_path / "missing.json")
+    assert missing is None

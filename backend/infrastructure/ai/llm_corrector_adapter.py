@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Sequence, Tuple
 
-from backend.infrastructure.ai.llm_corrector import CorrectionResult, LLMCorrector
+from backend.application.processing.correction_result import CorrectionResult
+from backend.infrastructure.ai.llm_corrector import LLMCorrector
 
 
 class LLMCorrectorAdapter:

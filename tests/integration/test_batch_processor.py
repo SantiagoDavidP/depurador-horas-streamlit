@@ -4,8 +4,9 @@ import pytest
 from openpyxl import Workbook
 
 from backend.application.batch.batch_processor import BatchFileRequest, BatchProcessor
-from backend.application.processing.service import TimeSheetProcessor
 from backend.domain.models import ColumnMapping
+from backend.infrastructure.composition.processing_factory import build_timesheet_processor
+from backend.infrastructure.parsing.excel_sheet_parser_adapter import ExcelSheetParserAdapter
 
 
 @pytest.fixture
@@ -26,8 +27,8 @@ def sample_excel_bytes():
 
 @pytest.mark.integration
 def test_successful_batch_processing(sample_excel_bytes):
-    processor = TimeSheetProcessor()
-    batch_processor = BatchProcessor(processor)
+    processor = build_timesheet_processor()
+    batch_processor = BatchProcessor(processor, sheet_parser=ExcelSheetParserAdapter())
     mapping = ColumnMapping(
         date="Fecha",
         hours="Horas",
@@ -53,8 +54,8 @@ def test_successful_batch_processing(sample_excel_bytes):
 
 @pytest.mark.integration
 def test_batch_with_invalid_file_returns_error():
-    processor = TimeSheetProcessor()
-    batch_processor = BatchProcessor(processor)
+    processor = build_timesheet_processor()
+    batch_processor = BatchProcessor(processor, sheet_parser=ExcelSheetParserAdapter())
     mapping = ColumnMapping(
         date="Fecha",
         hours="Horas",
