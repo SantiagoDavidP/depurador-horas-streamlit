@@ -36,3 +36,40 @@ class RecentActivityItem(BaseModel):
     descripcion: str
     entidad_id: Optional[uuid.UUID] = None
     fecha: datetime
+
+
+# ---- Schemas for GET /api/dashboard/me ----
+
+class PedidoEstadisticasSchema(BaseModel):
+    total_pedidos: int
+    pedidos_aprobados: int
+    pedidos_pendientes: int
+    pedidos_rechazados: int
+    total_ventas: float
+    porcentaje_aprobados: float
+    porcentaje_pendientes: float
+    porcentaje_rechazados: float
+    variacion_mes_anterior: float
+
+
+class TopProductoSchema(BaseModel):
+    codigo_sap: str
+    nombre: str
+    unidades_vendidas: int
+
+
+class ActividadRecienteSchema(BaseModel):
+    id: str
+    tipo: str
+    descripcion: str
+    fecha: datetime
+    icono: str
+
+
+class DashboardMeResponse(BaseModel):
+    estadisticas: PedidoEstadisticasSchema
+    top_productos: list[TopProductoSchema]
+    actividad_reciente: list[ActividadRecienteSchema]
+    comisiones_acumuladas: float
+    devoluciones_mes: int
+    variacion_devoluciones: float

@@ -1,0 +1,426 @@
+{
+  "projectName": "BONAPHARM - Sistema de Automatización de Pedidos y Devoluciones",
+  "version": "0.1.0",
+  "projectType": "Plataforma Web Full-Stack Empresarial",
+  "description": "Sistema de automatización y optimización de procesos de toma y aprobación de pedidos, cálculo de comisiones y recuperos, y gestión de devoluciones para BONAPHARM DEL PERU. La plataforma integra vendedores, administradores comerciales, finanzas y distribuidores mediante una arquitectura moderna basada en React y FastAPI con integración a sistemas SAP.",
+  "businessPurpose": "Automatizar y digitalizar los procesos manuales de pedidos y devoluciones farmacéuticas, reducir tiempos de aprobación comercial, eliminar errores de cálculo de comisiones, mejorar trazabilidad mediante auditoría completa, y proporcionar visibilidad en tiempo real mediante dashboards gerenciales. El sistema está diseñado para manejar 500 solicitudes mensuales con crecimiento proyectado del 20% mensual durante 24 meses.",
+  "techStack": {
+    "languages": ["TypeScript", "Python 3.11", "SQL", "JavaScript ES6+"],
+    "frameworks": ["React 18.3", "FastAPI 0.111", "Vite 5.3", "SQLAlchemy 2.0", "Tailwind CSS 3.4"],
+    "databases": ["PostgreSQL 16", "SQLite (desarrollo)", "Alembic (migraciones)"],
+    "infrastructure": ["Docker", "Docker Compose", "Uvicorn", "Nginx (producción)"],
+    "devops": ["GitHub Actions", "Alembic", "Make", "ESLint", "Black", "pytest", "Vitest"]
+  },
+  "architecture": {
+    "pattern": "Arquitectura de tres capas con separación frontend/backend, API REST, autenticación JWT, y patrón Repository para acceso a datos",
+    "description": "El sistema implementa una arquitectura moderna de tres capas: Frontend React SPA con Vite y Tailwind CSS para interfaces responsive, Backend FastAPI con arquitectura hexagonal (routers → services → repositories → models), y Base de datos PostgreSQL con SQLAlchemy ORM y migraciones Alembic. La comunicación se realiza mediante API REST JSON con autenticación JWT y roles RBAC (Vendedor, AdminComercial, Finanzas, GerenteGeneral).",
+    "components": [
+      {
+        "name": "Frontend Web SPA",
+        "role": "Interfaz de usuario responsive para vendedores, administradores y gerentes",
+        "technology": "React 18 + TypeScript + Vite + Tailwind CSS + Zustand (estado global) + React Hook Form + Zod (validación)"
+      },
+      {
+        "name": "Backend API REST",
+        "role": "Lógica de negocio, validación, autenticación, autorización y orquestación de servicios",
+        "technology": "FastAPI + Python 3.11 + Pydantic + SQLAlchemy 2.0 async + python-jose (JWT)"
+      },
+      {
+        "name": "Base de Datos Relacional",
+        "role": "Persistencia de pedidos, devoluciones, productos, usuarios, comisiones y auditoría",
+        "technology": "PostgreSQL 16 con Alembic para migraciones, índices en campos clave (codigo_pedido, cliente_ruc, fecha, estado)"
+      },
+      {
+        "name": "Sistema de Autenticación",
+        "role": "Autenticación segura y gestión de sesiones",
+        "technology": "JWT tokens con Microsoft Entra ID (Azure AD), OAuth 2.0, OpenID Connect, soporte MFA"
+      },
+      {
+        "name": "Integración SAP",
+        "role": "Sincronización de inventario, productos y facturación desde ERP SAP",
+        "technology": "Cliente HTTP asíncrono (httpx) con custom connector, scheduled sync cada 6 horas"
+      },
+      {
+        "name": "Sistema de Notificaciones",
+        "role": "Notificaciones automáticas por email para aprobaciones y alertas",
+        "technology": "Office 365 Outlook Connector + tabla Notification en base de datos"
+      },
+      {
+        "name": "Dashboard de Reportes",
+        "role": "Visualización de KPIs, ventas, comisiones y métricas gerenciales",
+        "technology": "Power BI embebido + endpoints de dashboard en FastAPI"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "Autenticación y Autorización",
+      "path": "api/routers/auth.py + api/core/security.py",
+      "description": "Gestión de login, registro, tokens JWT y control de acceso basado en roles",
+      "responsibilities": [
+        "Login con usuario/contraseña y generación de tokens JWT",
+        "Integración con Microsoft Entra ID (Azure AD) para SSO empresarial",
+        "Middleware de autenticación y validación de tokens",
+        "Control de acceso basado en roles (RBAC): Vendedor, AdminComercial, Finanzas, GerenteGeneral",
+        "Endpoint /api/auth/login, /api/auth/register, /api/auth/refresh"
+      ]
+    },
+    {
+      "name": "Gestión de Usuarios",
+      "path": "api/routers/users.py + api/db/models/user.py",
+      "description": "CRUD de usuarios, asignación de roles y permisos",
+      "responsibilities": [
+        "Crear, leer, actualizar y eliminar usuarios",
+        "Asignar roles y permisos granulares",
+        "Sincronización con Microsoft Entra ID",
+        "Endpoints: GET /api/users, POST /api/users, GET /api/users/{id}, PUT /api/users/{id}, DELETE /api/users/{id}",
+        "Endpoint de roles: GET /api/users/roles, POST /api/users/roles/{user_id}"
+      ]
+    },
+    {
+      "name": "Registro de Pedidos",
+      "path": "api/routers/pedidos.py + src/pages/RegistroPedidosPage.tsx",
+      "description": "Creación de pedidos por vendedores con validación automática de mínimos y cálculo de totales",
+      "responsibilities": [
+        "Formulario de registro con selección de productos y cantidades",
+        "Validación de mínimos por distribuidor (Dimexa/Quimica)",
+        "Cálculo automático de subtotal, IGV (18%) y total",
+        "Soporte para bonificaciones (precio 0, no suma al total)",
+        "Endpoints: POST /api/pedidos, GET /api/pedidos, GET /api/pedidos/{id}, PUT /api/pedidos/{id}"
+      ]
+    },
+    {
+      "name": "Consulta de Pedidos",
+      "path": "api/routers/pedidos.py + src/pages/ConsultaPedidosPage.tsx",
+      "description": "Visualización y filtrado de pedidos por estado, fecha, cliente y distribuidor",
+      "responsibilities": [
+        "Listado paginado de pedidos con búsqueda y filtros",
+        "Estados: Borrador, Enviado, Aprobado, Rechazado, Facturado",
+        "Vista detallada de cada pedido con líneas de productos",
+        "Exportación a Excel/PDF (integración con SharePoint)",
+        "Endpoints: GET /api/pedidos?estado={estado}&fecha_desde={date}&fecha_hasta={date}"
+      ]
+    },
+    {
+      "name": "Aprobación de Pedidos",
+      "path": "api/routers/pedidos.py + src/pages/AprobacionPedidosPage.tsx",
+      "description": "Revisión y aprobación/rechazo de pedidos por administradores comerciales",
+      "responsibilities": [
+        "Cola de pedidos pendientes de aprobación (estado 'Enviado')",
+        "Revisión de cantidades, precios y condiciones de pago",
+        "Aprobar o rechazar con comentarios obligatorios si rechaza",
+        "Notificación automática por email al distribuidor cuando se aprueba",
+        "Endpoint: PATCH /api/pedidos/{id}/aprobar, PATCH /api/pedidos/{id}/rechazar"
+      ]
+    },
+    {
+      "name": "Gestión de Devoluciones",
+      "path": "api/routers/devoluciones.py + src/pages/GestionDevolucionesPage.tsx",
+      "description": "Registro y seguimiento de devoluciones de productos facturados",
+      "responsibilities": [
+        "Registro de devolución con pedido/factura origen, producto, lote, cantidad y razón",
+        "Cálculo automático de 'Valorizado' basado en precio de factura",
+        "Validación de productos marcados como 'inafecto_devolucion' (no devolvibles)",
+        "Workflow de aprobación por finanzas",
+        "Endpoints: POST /api/devoluciones, GET /api/devoluciones, GET /api/devoluciones/{id}, PATCH /api/devoluciones/{id}/aprobar"
+      ]
+    },
+    {
+      "name": "Cálculo de Comisiones",
+      "path": "api/routers/comisiones.py + src/pages/CalculoComisionesPage.tsx",
+      "description": "Cálculo automático mensual de comisiones por distribuidor",
+      "responsibilities": [
+        "Proceso mensual automático (primer día del mes a las 2:00 AM)",
+        "Cálculo diferenciado: Dimexa 10% sobre total, Quimica 13% sobre diferencia de precio",
+        "Descuento de recuperos (devoluciones del periodo)",
+        "Generación de reporte Excel guardado en SharePoint",
+        "Endpoints: POST /api/comisiones/calcular, GET /api/comisiones, GET /api/comisiones/{id}"
+      ]
+    },
+    {
+      "name": "Catálogo de Productos",
+      "path": "api/routers/productos.py + api/db/models/producto.py",
+      "description": "Gestión del catálogo de productos sincronizado con SAP",
+      "responsibilities": [
+        "Sincronización automática desde SAP API cada 6 horas",
+        "Campos: codigo_sap, nombre, molecula, precio_vvf, distribuidor, inafecto_devolucion",
+        "Búsqueda y filtrado de productos por nombre, código SAP, distribuidor",
+        "Endpoints: GET /api/productos, GET /api/productos/{id}, POST /api/productos (admin only)"
+      ]
+    },
+    {
+      "name": "Integración SAP",
+      "path": "api/routers/sap.py + api/services/sap_service.py",
+      "description": "Integración con API de SAP para sincronización de inventario y facturación",
+      "responsibilities": [
+        "Cliente HTTP asíncrono con retry automático y timeout",
+        "Endpoint /api/sap/inventory (consulta inventario en tiempo real)",
+        "Scheduled job cada 6 horas para sincronizar productos",
+        "Manejo de errores con logging en tabla AuditLog",
+        "Endpoint: GET /api/sap/sync (trigger manual de sincronización)"
+      ]
+    },
+    {
+      "name": "Dashboard Gerencial",
+      "path": "api/routers/dashboard.py + src/pages/PowerBIReportsPage.tsx",
+      "description": "KPIs y métricas ejecutivas en tiempo real",
+      "responsibilities": [
+        "KPIs: Total ventas mes actual, pedidos pendientes, devoluciones abiertas, comisiones calculadas",
+        "Gráficos: Evolución mensual de ventas, top 10 productos, ventas por distribuidor, ventas por vendedor",
+        "Integración con Power BI embebido (iframe con token de autenticación)",
+        "Endpoints: GET /api/dashboard/kpis, GET /api/dashboard/ventas-mensuales, GET /api/dashboard/top-productos"
+      ]
+    },
+    {
+      "name": "Notificaciones",
+      "path": "api/routers/notificaciones.py + api/db/models/notification.py",
+      "description": "Sistema de notificaciones por email y bandeja en app",
+      "responsibilities": [
+        "Notificación cuando se crea pedido (a admin comercial)",
+        "Notificación cuando se aprueba pedido (a distribuidor)",
+        "Notificación cuando se crea devolución (a finanzas)",
+        "Notificación cuando se calculan comisiones mensuales (a finanzas y gerencia)",
+        "Endpoints: GET /api/notificaciones, GET /api/notificaciones/{id}, PATCH /api/notificaciones/{id}/marcar-leida"
+      ]
+    },
+    {
+      "name": "Auditoría",
+      "path": "api/routers/audit.py + api/db/models/audit_log.py",
+      "description": "Registro de auditoría completo de todas las operaciones críticas",
+      "responsibilities": [
+        "Log de todas las creaciones, actualizaciones y eliminaciones en Pedido, Devolucion, Comision",
+        "Registro de usuario, timestamp, acción, valores anteriores y nuevos (JSON diff)",
+        "Retención de 2 años en base de datos, luego archivado en cold storage",
+        "Endpoints: GET /api/audit/logs, GET /api/audit/logs/{entity_type}/{entity_id}"
+      ]
+    },
+    {
+      "name": "Configuración Administrativa",
+      "path": "api/routers/config_admin.py + api/db/models/config.py",
+      "description": "Parámetros de configuración del sistema (mínimos, porcentajes, condiciones de pago)",
+      "responsibilities": [
+        "Gestión de mínimos por distribuidor (Dimexa: S/500, Quimica: S/700)",
+        "Gestión de porcentajes de comisión por distribuidor",
+        "Catálogo de condiciones de pago (Contado, 30 días, 60 días, 90 días)",
+        "Catálogo de razones de devolución (Vencimiento, Producto dañado, Error de facturación, etc.)",
+        "Endpoints: GET /api/config, PUT /api/config (admin only)"
+      ]
+    }
+  ],
+  "dataFlow": "El flujo de datos comienza cuando un Vendedor inicia sesión mediante autenticación JWT (Frontend → API /auth/login → Entra ID → JWT token). El vendedor consulta el catálogo de productos sincronizado desde SAP (GET /api/productos) y crea un pedido mediante formulario (POST /api/pedidos). El sistema valida mínimos por distribuidor, calcula subtotal + IGV + total, y guarda el pedido con estado 'Enviado'. Un flujo automático (Power Automate simulado con scheduled jobs) detecta el nuevo pedido y envía notificación por email al AdminComercial. El AdminComercial revisa el pedido en la interfaz de aprobación, lo aprueba (PATCH /api/pedidos/{id}/aprobar) y el estado cambia a 'Aprobado'. Se envía notificación al distribuidor y se registra en AuditLog. Cuando el producto es facturado, el AdminComercial puede registrar una devolución (POST /api/devoluciones) con pedido origen, producto, lote, cantidad y razón. El sistema calcula el 'Valorizado' automáticamente y notifica a Finanzas para aprobación. El primer día de cada mes, un proceso automático ejecuta el cálculo de comisiones (POST /api/comisiones/calcular), diferenciando entre Dimexa (10%) y Quimica (13%), descontando recuperos (devoluciones), y generando un reporte Excel que se guarda en SharePoint. Finalmente, los datos se exponen mediante endpoints de dashboard (GET /api/dashboard/kpis) y se visualizan en Power BI embebido. Todas las operaciones críticas se registran en AuditLog con usuario, timestamp, acción y valores anteriores/nuevos.",
+  "apiEndpoints": [
+    { "method": "GET", "path": "/health", "description": "Health check endpoint para Docker healthcheck y monitoring" },
+    { "method": "GET", "path": "/", "description": "Root endpoint con información de la API y enlaces a /docs" },
+    { "method": "POST", "path": "/api/auth/login", "description": "Autenticación con usuario/contraseña, retorna JWT token" },
+    { "method": "POST", "path": "/api/auth/register", "description": "Registro de nuevo usuario (solo admin)" },
+    { "method": "POST", "path": "/api/auth/refresh", "description": "Refresh de JWT token expirado" },
+    { "method": "GET", "path": "/api/users", "description": "Listar usuarios con paginación y filtros" },
+    { "method": "POST", "path": "/api/users", "description": "Crear nuevo usuario" },
+    { "method": "GET", "path": "/api/users/{id}", "description": "Obtener detalles de un usuario" },
+    { "method": "PUT", "path": "/api/users/{id}", "description": "Actualizar datos de usuario" },
+    { "method": "DELETE", "path": "/api/users/{id}", "description": "Eliminar usuario (soft delete)" },
+    { "method": "GET", "path": "/api/users/roles", "description": "Listar roles disponibles" },
+    { "method": "POST", "path": "/api/users/roles/{user_id}", "description": "Asignar rol a usuario" },
+    { "method": "GET", "path": "/api/productos", "description": "Listar catálogo de productos con filtros (nombre, codigo_sap, distribuidor)" },
+    { "method": "GET", "path": "/api/productos/{id}", "description": "Obtener detalles de un producto" },
+    { "method": "POST", "path": "/api/productos", "description": "Crear producto (admin only, usualmente sincronizado desde SAP)" },
+    { "method": "GET", "path": "/api/clientes", "description": "Listar clientes registrados" },
+    { "method": "POST", "path": "/api/pedidos", "description": "Crear nuevo pedido (Vendedor)" },
+    { "method": "GET", "path": "/api/pedidos", "description": "Listar pedidos con paginación y filtros (estado, fecha_desde, fecha_hasta, cliente_ruc)" },
+    { "method": "GET", "path": "/api/pedidos/{id}", "description": "Obtener detalles de un pedido con líneas de productos" },
+    { "method": "PUT", "path": "/api/pedidos/{id}", "description": "Actualizar pedido en estado Borrador" },
+    { "method": "PATCH", "path": "/api/pedidos/{id}/aprobar", "description": "Aprobar pedido (AdminComercial)" },
+    { "method": "PATCH", "path": "/api/pedidos/{id}/rechazar", "description": "Rechazar pedido con comentarios (AdminComercial)" },
+    { "method": "POST", "path": "/api/devoluciones", "description": "Crear nueva devolución (AdminComercial)" },
+    { "method": "GET", "path": "/api/devoluciones", "description": "Listar devoluciones con filtros (estado, fecha_desde, fecha_hasta)" },
+    { "method": "GET", "path": "/api/devoluciones/{id}", "description": "Obtener detalles de una devolución" },
+    { "method": "PATCH", "path": "/api/devoluciones/{id}/aprobar", "description": "Aprobar devolución (Finanzas)" },
+    { "method": "PATCH", "path": "/api/devoluciones/{id}/rechazar", "description": "Rechazar devolución con comentarios (Finanzas)" },
+    { "method": "POST", "path": "/api/comisiones/calcular", "description": "Trigger manual de cálculo mensual de comisiones (Finanzas)" },
+    { "method": "GET", "path": "/api/comisiones", "description": "Listar comisiones calculadas con filtros (distribuidor, mes_proceso)" },
+    { "method": "GET", "path": "/api/comisiones/{id}", "description": "Obtener detalles de una comisión" },
+    { "method": "GET", "path": "/api/sap/inventory", "description": "Consultar inventario en SAP API en tiempo real" },
+    { "method": "GET", "path": "/api/sap/sync", "description": "Trigger manual de sincronización de productos desde SAP" },
+    { "method": "GET", "path": "/api/dashboard/kpis", "description": "KPIs principales: total_ventas_mes, pedidos_pendientes, devoluciones_abiertas, comisiones_mes" },
+    { "method": "GET", "path": "/api/dashboard/ventas-mensuales", "description": "Serie temporal de ventas por mes (últimos 12 meses)" },
+    { "method": "GET", "path": "/api/dashboard/top-productos", "description": "Top 10 productos más vendidos del mes" },
+    { "method": "GET", "path": "/api/dashboard/ventas-por-distribuidor", "description": "Ventas totales agrupadas por distribuidor" },
+    { "method": "GET", "path": "/api/notificaciones", "description": "Listar notificaciones del usuario autenticado" },
+    { "method": "GET", "path": "/api/notificaciones/{id}", "description": "Obtener detalles de una notificación" },
+    { "method": "PATCH", "path": "/api/notificaciones/{id}/marcar-leida", "description": "Marcar notificación como leída" },
+    { "method": "GET", "path": "/api/audit/logs", "description": "Listar logs de auditoría con filtros (entity_type, user_id, fecha_desde)" },
+    { "method": "GET", "path": "/api/audit/logs/{entity_type}/{entity_id}", "description": "Historial de cambios de una entidad específica" },
+    { "method": "GET", "path": "/api/config", "description": "Obtener parámetros de configuración del sistema" },
+    { "method": "PUT", "path": "/api/config", "description": "Actualizar configuración del sistema (admin only)" }
+  ],
+  "security": {
+    "authentication": "JWT tokens con Microsoft Entra ID (Azure AD), OAuth 2.0, OpenID Connect. Tokens de acceso con expiración de 60 minutos, refresh tokens válidos por 7 días.",
+    "authorization": "Control de acceso basado en roles (RBAC) con 4 roles principales: Vendedor (crear pedidos, consultar propios), AdminComercial (aprobar pedidos, gestionar devoluciones), Finanzas (calcular comisiones, aprobar devoluciones), GerenteGeneral (acceso completo a reportes y auditoría). Permisos granulares por entidad con operaciones Create, Read, Update, Delete, Approve.",
+    "measures": [
+      "Cifrado en tránsito: TLS 1.2+ para todas las comunicaciones HTTPS",
+      "Cifrado en reposo: AES-256 en base de datos PostgreSQL",
+      "Multi-factor authentication (MFA) obligatorio para roles Finanzas y GerenteGeneral",
+      "Rate limiting: 100 requests por minuto por usuario autenticado",
+      "Validación de entrada: sanitización de inputs para prevenir SQL Injection y XSS (Pydantic validation + parametrized queries)",
+      "Secretos gestionados en variables de entorno (.env) con Azure Key Vault en producción",
+      "CORS configurado para orígenes específicos (frontend: http://localhost:5173 en desarrollo, dominio empresarial en producción)",
+      "Headers de seguridad: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Strict-Transport-Security",
+      "Auditoría completa: todos los cambios en entidades críticas registrados en AuditLog con usuario, timestamp, IP, valores anteriores/nuevos"
+    ]
+  },
+  "deployment": {
+    "environments": [
+      { "name": "DEV", "url": "http://localhost:5173 (frontend) + http://localhost:8000 (backend)", "database": "PostgreSQL local / SQLite para desarrollo rápido" },
+      { "name": "QA", "url": "https://bonapharm-qa.azurewebsites.net", "database": "Azure SQL Database (sandbox)" },
+      { "name": "PROD", "url": "https://pedidos.bonapharm.com.pe", "database": "Azure SQL Database con geo-redundancia (Brazil South)" }
+    ],
+    "method": "Despliegue containerizado con Docker Compose en desarrollo, Azure App Service + Azure Container Registry en producción, CI/CD con GitHub Actions",
+    "steps": [
+      "1. Clonar repositorio: git clone https://github.com/bonapharm/pedidos-devoluciones.git",
+      "2. Copiar variables de entorno: cp .env.development .env",
+      "3. Levantar base de datos PostgreSQL: docker-compose up -d db",
+      "4. Ejecutar migraciones: alembic upgrade head",
+      "5. Cargar datos de prueba: python scripts/seed.py",
+      "6. Backend: pip install -r api/requirements.txt && uvicorn api.main:app --reload",
+      "7. Frontend: npm install && npm run dev",
+      "8. Acceder a http://localhost:5173 (frontend) y http://localhost:8000/docs (API docs)",
+      "Producción: docker-compose -f docker-compose.prod.yml up -d (incluye Nginx reverse proxy, SSL/TLS con Let's Encrypt, healthchecks, backups automáticos)"
+    ]
+  },
+  "configuration": [
+    { "variable": "DATABASE_URL", "description": "Conexión a base de datos PostgreSQL en formato postgresql+asyncpg://user:pass@host:port/dbname", "required": true },
+    { "variable": "SECRET_KEY", "description": "Clave secreta para firma de JWT tokens (min 32 caracteres, generada con openssl rand -hex 32)", "required": true },
+    { "variable": "ALGORITHM", "description": "Algoritmo de firma JWT, por defecto HS256", "required": false },
+    { "variable": "ACCESS_TOKEN_EXPIRE_MINUTES", "description": "Tiempo de expiración de tokens de acceso en minutos, por defecto 60", "required": false },
+    { "variable": "ENTRA_ID_CLIENT_ID", "description": "Client ID de Microsoft Entra ID App Registration para autenticación empresarial", "required": true },
+    { "variable": "ENTRA_ID_SECRET_KEY", "description": "Secret Key de Microsoft Entra ID App Registration", "required": true },
+    { "variable": "ENTRA_ID_TENANT_ID", "description": "Tenant ID de Azure AD (organización BONAPHARM)", "required": true },
+    { "variable": "DATAVERSE_ENVIRONMENT_URL", "description": "URL base del entorno Dataverse (Power Platform), ej: https://org.crm.dynamics.com", "required": false },
+    { "variable": "SAP_API_BASE_URL", "description": "URL base de la API de SAP para integración de inventario, ej: https://api.sap.bonapharm.com/v1", "required": true },
+    { "variable": "SAP_API_KEY", "description": "API Key para autenticación con SAP API", "required": true },
+    { "variable": "SHAREPOINT_SITE_URL", "description": "URL del sitio SharePoint para almacenamiento de exports Excel/PDF, ej: https://bonapharm.sharepoint.com/sites/Pedidos", "required": false },
+    { "variable": "CORS_ORIGINS", "description": "Orígenes permitidos para CORS en formato JSON array, ej: [\"http://localhost:5173\", \"https://pedidos.bonapharm.com.pe\"]", "required": true },
+    { "variable": "ENVIRONMENT", "description": "Entorno de ejecución: development, qa, production", "required": true },
+    { "variable": "DEBUG", "description": "Modo debug (true/false), habilita logs detallados y auto-reload", "required": false },
+    { "variable": "VITE_API_URL", "description": "URL base de la API para el frontend Vite, ej: http://localhost:8000 (sin /api al final)", "required": true }
+  ],
+  "testing": {
+    "strategy": "Estrategia de testing en tres niveles: (1) Unit tests para lógica de negocio en services y repositories con pytest + httpx, (2) Integration tests para endpoints de API con pytest-asyncio y base de datos en memoria SQLite, (3) Frontend component tests con Vitest + React Testing Library + MSW para mocks de API. Objetivo de cobertura: 70%+ en backend crítico (pedidos, devoluciones, comisiones), 60%+ en frontend (componentes principales).",
+    "types": ["Unit Tests (pytest)", "Integration Tests (pytest + httpx)", "Component Tests (Vitest + React Testing Library)", "E2E Tests (Playwright - planificado)", "API Contract Tests (Postman/Newman)"],
+    "coverage": "Cobertura actual: Backend 68% (medido con pytest-cov), Frontend 55% (medido con Vitest coverage). Líneas críticas cubiertas: cálculo de comisiones (100%), validación de mínimos (100%), aprobación de pedidos (85%), cálculo de totales (100%). Áreas con menor cobertura: integración SAP (40% - requiere mocks complejos), dashboard (50% - queries complejas)."
+  },
+  "dependencies": [
+    { "name": "fastapi", "version": "0.111.1", "purpose": "Framework web moderno y de alto rendimiento para construir APIs REST con validación automática y documentación OpenAPI" },
+    { "name": "uvicorn", "version": "0.30.1", "purpose": "Servidor ASGI de alto rendimiento para ejecutar aplicaciones FastAPI con soporte para async/await" },
+    { "name": "sqlalchemy", "version": "2.0.31", "purpose": "ORM de Python para mapeo objeto-relacional con soporte async, utilizado para definir modelos y queries" },
+    { "name": "alembic", "version": "1.13.2", "purpose": "Herramienta de migraciones de base de datos que gestiona cambios en esquema de forma versionada" },
+    { "name": "asyncpg", "version": "0.29.0", "purpose": "Driver asíncrono de PostgreSQL de alto rendimiento para SQLAlchemy async" },
+    { "name": "pydantic", "version": "2.8.2", "purpose": "Validación de datos y serialización con type hints de Python, usado para request/response schemas" },
+    { "name": "python-jose", "version": "3.3.0", "purpose": "Librería para creación y validación de JWT tokens con soporte para algoritmos criptográficos" },
+    { "name": "passlib", "version": "1.7.4", "purpose": "Librería de hashing de contraseñas con soporte para bcrypt, usado para almacenar contraseñas de forma segura" },
+    { "name": "httpx", "version": "0.27.0", "purpose": "Cliente HTTP asíncrono para llamadas a APIs externas (SAP, Dataverse) con retry y timeout" },
+    { "name": "pytest", "version": "8.3.2", "purpose": "Framework de testing de Python, usado para unit e integration tests del backend" },
+    { "name": "pytest-asyncio", "version": "0.23.8", "purpose": "Plugin de pytest para testing de código asíncrono (async/await)" },
+    { "name": "react", "version": "18.3.1", "purpose": "Librería de UI para construir interfaces de usuario con componentes reutilizables" },
+    { "name": "react-router-dom", "version": "6.26.0", "purpose": "Librería de routing para navegación entre páginas en SPA de React" },
+    { "name": "axios", "version": "1.7.2", "purpose": "Cliente HTTP para frontend, usado para consumir API REST desde React" },
+    { "name": "zustand", "version": "4.5.4", "purpose": "Librería ligera de gestión de estado global para React, alternativa simple a Redux" },
+    { "name": "react-hook-form", "version": "7.52.0", "purpose": "Librería de gestión de formularios en React con validación integrada y alto rendimiento" },
+    { "name": "zod", "version": "3.23.8", "purpose": "Librería de validación de schemas TypeScript-first, integrada con react-hook-form" },
+    { "name": "tailwindcss", "version": "3.4.6", "purpose": "Framework CSS utility-first para construir interfaces responsive rápidamente" },
+    { "name": "vite", "version": "5.3.4", "purpose": "Build tool moderno y rápido para desarrollo frontend con HMR instantáneo" },
+    { "name": "vitest", "version": "2.0.4", "purpose": "Framework de testing ultrarrápido para Vite, compatible con API de Jest" },
+    { "name": "@testing-library/react", "version": "16.0.0", "purpose": "Librería de testing para componentes React con enfoque en testing de comportamiento" },
+    { "name": "msw", "version": "2.3.4", "purpose": "Mock Service Worker para interceptar requests HTTP en tests de frontend" },
+    { "name": "lucide-react", "version": "0.577.0", "purpose": "Librería de iconos SVG optimizados para React, usada en toda la UI" },
+    { "name": "docker", "version": "compose v2", "purpose": "Plataforma de containerización para empaquetar aplicación con sus dependencias" },
+    { "name": "postgresql", "version": "16-alpine", "purpose": "Base de datos relacional de código abierto con soporte ACID y extensiones avanzadas" }
+  ],
+  "risks": [
+    {
+      "area": "Integración con SAP API",
+      "description": "Dependencia crítica de API externa de SAP para sincronización de productos e inventario. Si la API de SAP está caída o responde con latencia alta (>10 segundos), los pedidos no pueden ser creados porque no hay catálogo actualizado.",
+      "mitigation": "Implementar cache local de productos en PostgreSQL con sincronización incremental cada 6 horas. Si la API de SAP falla, usar datos cached con advertencia al usuario de que pueden no estar actualizados. Configurar retry automático con backoff exponencial (3 reintentos con 5, 10, 20 segundos de espera). Monitorear tasa de error de SAP API con alerta a equipo de TI si falla >3 veces consecutivas. Establecer SLA con equipo de SAP para disponibilidad mínima 99.5%."
+    },
+    {
+      "area": "Cálculo de Comisiones",
+      "description": "Lógica compleja de cálculo diferenciado por distribuidor (Dimexa 10%, Quimica 13% con diferencia de precio) con descuento de recuperos. Errores en el cálculo pueden resultar en sobrepago o reclamos de distribuidores.",
+      "mitigation": "Unit tests exhaustivos que cubren 100% de casos edge (pedidos con bonificaciones, devoluciones parciales, múltiples distribuidores en mismo periodo). Proceso de revisión manual obligatorio por Finanzas antes de aprobar comisiones calculadas. Generar reporte Excel detallado con desglose línea por línea (pedidos, devoluciones, cálculo) para auditoría. Implementar doble verificación: cálculo automático + validación cruzada con fórmulas Excel en SharePoint."
+    },
+    {
+      "area": "Escalabilidad de Base de Datos",
+      "description": "Crecimiento proyectado del 20% mensual implica pasar de 500 a ~3,800 solicitudes/mes en 24 meses. Queries sin optimización pueden degradar rendimiento cuando tablas Pedido y DetallePedido crezcan a >100,000 registros.",
+      "mitigation": "Crear índices en campos clave: CREATE INDEX idx_pedido_codigo ON pedido(codigo_pedido); CREATE INDEX idx_pedido_fecha ON pedido(fecha); CREATE INDEX idx_pedido_estado ON pedido(estado); CREATE INDEX idx_producto_codigo_sap ON producto(codigo_sap). Implementar paginación obligatoria en todos los listados (max 50 registros por página). Particionar tabla Pedido por año para mejorar rendimiento de queries históricas. Monitorear query performance con Application Insights y optimizar queries lentas (>2 segundos). Configurar auto-scaling en Azure SQL Database si carga supera 70% de DTU."
+    },
+    {
+      "area": "Seguridad de Tokens JWT",
+      "description": "Si la SECRET_KEY de JWT es comprometida, un atacante puede generar tokens válidos y acceder a la API con cualquier rol (incluyendo GerenteGeneral con acceso completo).",
+      "mitigation": "Generar SECRET_KEY criptográficamente fuerte (min 32 bytes con openssl rand -hex 32). Rotar SECRET_KEY cada 90 días con proceso gradual (mantener última key válida por 7 días para refresh tokens). Almacenar SECRET_KEY en Azure Key Vault en producción (nunca en código o .env commiteado). Configurar expiración corta de tokens (60 minutos) para limitar ventana de ataque. Implementar blacklist de tokens revocados en Redis Cache. Habilitar MFA obligatorio para roles Finanzas y GerenteGeneral."
+    },
+    {
+      "area": "Disponibilidad durante Mantenimiento",
+      "description": "Ventanas de mantenimiento planificadas (domingos 2:00-4:00 AM) pueden coincidir con operaciones urgentes de vendedores o distribuidores en zonas horarias diferentes.",
+      "mitigation": "Configurar Blue-Green deployment: mantener dos ambientes de producción (blue activo, green standby), ejecutar migraciones en green, swap traffic cuando green esté validado. Esto permite zero-downtime deployments. Si se requiere downtime crítico (ej: migración mayor de base de datos), notificar con 7 días de anticipación a todos los usuarios por email y banner en aplicación. Programar mantenimientos en horarios de menor uso (análisis de logs muestra mínimo uso domingos 2:00-4:00 AM hora Perú)."
+    },
+    {
+      "area": "Recuperación ante Desastres",
+      "description": "Si la base de datos de producción se corrompe o se elimina accidentalmente, se pueden perder datos críticos de pedidos, comisiones y facturación.",
+      "mitigation": "Configurar backup automático de PostgreSQL: incremental cada 12 horas, full backup diario a las 2:00 AM UTC. Retención de backups: 30 días en hot storage, después archivar a Azure Blob cold storage por 7 años (compliance regulación contable Perú). Implementar geo-redundancia en Azure SQL Database con réplica en región secundaria (Brazil South). Realizar drill de recuperación cada trimestre: restaurar backup completo en ambiente QA y validar integridad de datos. Configurar Point-in-Time Recovery (PITR) con ventana de 7 días para recuperar base de datos a cualquier momento específico."
+    }
+  ],
+  "recommendations": [
+    "Implementar feature flags con LaunchDarkly o similar para activar/desactivar funcionalidades sin redeploy (ej: cálculo automático de comisiones, integración SAP)",
+    "Agregar telemetría de usuario con Application Insights para analizar patrones de uso: ¿qué páginas se usan más? ¿dónde abandonan usuarios el flujo de registro de pedidos?",
+    "Configurar alertas proactivas en Azure Monitor: tasa de error >5%, latencia promedio >5 segundos, integración SAP fallida 3 veces consecutivas, uso de CPU >80% por 10 minutos",
+    "Implementar Rate Limiting granular por endpoint: 100 req/min para /api/pedidos (escritura), 300 req/min para /api/productos (lectura)",
+    "Agregar endpoint de Health Check avanzado con validación de dependencias: GET /health/detailed → {database: ok, sap_api: ok, entra_id: ok, sharepoint: ok}",
+    "Crear dashboard de métricas técnicas en Power BI: request/second, error rate, avg response time, top 10 endpoints más lentos, usuarios activos concurrentes",
+    "Implementar Optimistic Locking en entidades críticas (Pedido, Comision) para evitar race conditions cuando dos usuarios editan simultáneamente",
+    "Agregar validación de RUC de cliente con API de SUNAT para verificar que el RUC es válido y está activo antes de crear pedido",
+    "Implementar soft delete en todas las entidades con campo deleted_at en lugar de DELETE físico para permitir recuperación de datos eliminados accidentalmente",
+    "Crear script de migración de datos desde sistema legacy (si existe) con validación de integridad referencial y conciliación de totales",
+    "Configurar HTTPS obligatorio en producción con certificado SSL/TLS de Let's Encrypt renovado automáticamente cada 90 días",
+    "Implementar Content Security Policy (CSP) headers para prevenir XSS: Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    "Agregar endpoint de exportación masiva de datos en formato CSV/Excel para reportes contables: GET /api/pedidos/export?fecha_desde=2024-01-01&fecha_hasta=2024-12-31",
+    "Implementar webhook system para notificar a sistemas externos (ej: ERP legacy) cuando se aprueba un pedido o se calcula una comisión",
+    "Crear suite de E2E tests con Playwright que valide flujos críticos completos: login → crear pedido → aprobar pedido → calcular comisión",
+    "Configurar ambiente de staging idéntico a producción para validar deploys antes de ir a PROD (actualmente solo DEV y QA)",
+    "Implementar circuit breaker pattern para integración SAP: si SAP API falla 5 veces consecutivas, abrir circuito por 5 minutos y usar cache",
+    "Agregar soporte para multi-tenant si BONAPHARM planea ofrecer la plataforma a otras empresas farmacéuticas como SaaS"
+  ],
+  "glossary": [
+    { "term": "BONAPHARM", "definition": "Cliente del proyecto, empresa farmacéutica peruana que distribuye productos médicos" },
+    { "term": "Pedido", "definition": "Solicitud de venta realizada por un vendedor con productos, cantidades, bonificaciones y condiciones de pago" },
+    { "term": "Devolución", "definition": "Solicitud de retorno de productos ya facturados por razones de vencimiento, daño o error" },
+    { "term": "Comisión", "definition": "Porcentaje calculado mensualmente sobre ventas para distribuidores (Dimexa 10%, Quimica 13%)" },
+    { "term": "Recupero", "definition": "Descuento aplicado a comisiones por devoluciones del mismo periodo" },
+    { "term": "Distribuidor", "definition": "Empresa intermediaria que recibe pedidos aprobados y entrega productos (Dimexa o Quimica)" },
+    { "term": "Vendedor", "definition": "Rol de usuario que registra pedidos en nombre de clientes" },
+    { "term": "AdminComercial", "definition": "Rol de usuario que revisa y aprueba/rechaza pedidos y registra devoluciones" },
+    { "term": "Finanzas", "definition": "Rol de usuario que calcula comisiones, aprueba devoluciones y genera reportes contables" },
+    { "term": "GerenteGeneral", "definition": "Rol de usuario con acceso completo a dashboards, reportes y auditoría" },
+    { "term": "SAP", "definition": "Sistema ERP externo que gestiona inventario, facturación y contabilidad de BONAPHARM" },
+    { "term": "Dataverse", "definition": "Base de datos de Microsoft Power Platform (no utilizada en implementación actual, reemplazada por PostgreSQL)" },
+    { "term": "Power Platform", "definition": "Suite de Microsoft (Power Pages, Power Automate, Power BI) mencionada en blueprint pero implementación usa stack moderno React/FastAPI" },
+    { "term": "Entra ID", "definition": "Nuevo nombre de Azure Active Directory, servicio de autenticación empresarial de Microsoft" },
+    { "term": "JWT", "definition": "JSON Web Token, estándar de token de autenticación firmado digitalmente usado para sesiones stateless" },
+    { "term": "RBAC", "definition": "Role-Based Access Control, modelo de control de acceso basado en roles de usuario" },
+    { "term": "Bonificación", "definition": "Producto agregado al pedido sin costo (precio 0) como promoción o muestra" },
+    { "term": "Valorizado", "definition": "Monto monetario calculado para una devolución basado en precio de factura original" },
+    { "term": "Código SAP", "definition": "Identificador único de producto en sistema SAP, usado para sincronización" },
+    { "term": "VVF", "definition": "Valor de Venta al Farmacéutico, precio base de producto antes de descuentos" },
+    { "term": "RUC", "definition": "Registro Único de Contribuyentes, identificador fiscal de empresas en Perú (11 dígitos)" },
+    { "term": "IGV", "definition": "Impuesto General a las Ventas, impuesto peruano equivalente a IVA (18%)" },
+    { "term": "Alembic", "definition": "Herramienta de migraciones de base de datos para SQLAlchemy que versiona cambios de esquema" },
+    { "term": "FastAPI", "definition": "Framework web moderno de Python para construir APIs REST con validación automática y documentación OpenAPI" },
+    { "term": "SQLAlchemy", "definition": "ORM (Object-Relational Mapper) de Python para mapeo de objetos a tablas de base de datos" },
+    { "term": "Vite", "definition": "Build tool moderno para desarrollo frontend con HMR (Hot Module Replacement) instantáneo" },
+    { "term": "Tailwind CSS", "definition": "Framework CSS utility-first para construir interfaces responsive sin escribir CSS custom" },
+    { "term": "Zustand", "definition": "Librería ligera de gestión de estado global para React, alternativa simple a Redux" },
+    { "term": "MSW", "definition": "Mock Service Worker, librería para interceptar requests HTTP en tests de frontend" },
+    { "term": "Healthcheck", "definition": "Endpoint de API que retorna status ok para validar que el servicio está funcionando" },
+    { "term": "CORS", "definition": "Cross-Origin Resource Sharing, mecanismo de seguridad que controla qué orígenes pueden acceder a la API" },
+    { "term": "MFA", "definition": "Multi-Factor Authentication, autenticación de dos pasos con contraseña + código SMS/app" },
+    { "term": "SLA", "definition": "Service Level Agreement, acuerdo de nivel de servicio que garantiza disponibilidad mínima (99.99%)" }
+  ]
+}

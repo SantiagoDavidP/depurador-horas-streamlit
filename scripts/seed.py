@@ -16,10 +16,13 @@ import sys
 import uuid
 from pathlib import Path
 
+
+
 # Add project root to sys.path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from api.core.security import hash_password
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,7 +50,7 @@ async def seed_users(session: AsyncSession):
             "id": uuid.UUID("11111111-1111-1111-1111-111111111111"),
             "nombre_completo": "Juan Pérez",
             "email": "vendedor@bonapharm.com",
-            "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYWfJ0xEZLi",  # password: demo123
+            "password_hash": hash_password("demo123"),  # password: demo123
             "rol": "Vendedor",
             "activo": True,
         },
@@ -55,7 +58,7 @@ async def seed_users(session: AsyncSession):
             "id": uuid.UUID("22222222-2222-2222-2222-222222222222"),
             "nombre_completo": "María García",
             "email": "admin@bonapharm.com",
-            "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYWfJ0xEZLi",
+            "password_hash": hash_password("demo123"),  # password: demo123
             "rol": "AdminComercial",
             "activo": True,
         },
@@ -63,7 +66,7 @@ async def seed_users(session: AsyncSession):
             "id": uuid.UUID("33333333-3333-3333-3333-333333333333"),
             "nombre_completo": "Carlos Rodríguez",
             "email": "finanzas@bonapharm.com",
-            "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYWfJ0xEZLi",
+            "password_hash": hash_password("demo123"),  # password: demo123
             "rol": "Finanzas",
             "activo": True,
         },
@@ -71,7 +74,7 @@ async def seed_users(session: AsyncSession):
             "id": uuid.UUID("44444444-4444-4444-4444-444444444444"),
             "nombre_completo": "Ana Martínez",
             "email": "gerente@bonapharm.com",
-            "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYWfJ0xEZLi",
+            "password_hash": hash_password("demo123"),  # password: demo123
             "rol": "GerenteGeneral",
             "activo": True,
         },

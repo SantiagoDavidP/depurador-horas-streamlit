@@ -9,20 +9,20 @@ import type {
 export const devolucionService = {
   async list(filters?: FilterConfig): Promise<PaginatedResponse<Devolucion>> {
     const { data } = await api.get<PaginatedResponse<Devolucion>>(
-      '/api/devoluciones',
+      '/api/returns',
       { params: filters }
     );
     return data;
   },
 
   async getById(id: string): Promise<Devolucion> {
-    const { data } = await api.get<Devolucion>(`/api/devoluciones/${id}`);
+    const { data } = await api.get<Devolucion>(`/api/returns/${id}`);
     return data;
   },
 
   async create(devolucion: CreateDevolucionRequest): Promise<Devolucion> {
     const { data } = await api.post<Devolucion>(
-      '/api/devoluciones',
+      '/api/returns',
       devolucion
     );
     return data;
@@ -30,14 +30,14 @@ export const devolucionService = {
 
   async approve(id: string): Promise<Devolucion> {
     const { data } = await api.post<Devolucion>(
-      `/api/devoluciones/${id}/aprobar`
+      `/api/returns/${id}/aprobar`
     );
     return data;
   },
 
   async reject(id: string, motivo: string): Promise<Devolucion> {
     const { data } = await api.post<Devolucion>(
-      `/api/devoluciones/${id}/rechazar`,
+      `/api/returns/${id}/rechazar`,
       { motivo }
     );
     return data;

@@ -70,12 +70,23 @@ class ComisionApproveRequest(BaseModel):
     observaciones: Optional[str] = None
 
 
+class ComisionDistribuidorFE(BaseModel):
+    """Distributor commission data — field names match frontend ComisionDistribuidor type."""
+    distribuidor: str
+    distribuidor_ruc: str = ""
+    porcentaje_comision: float
+    ventas_periodo: float
+    comision_total: float
+    recuperos: float
+    neto_pagar: float
+    detalles: list = []
+
+
 class ComisionSummaryResponse(BaseModel):
-    """Period summary across distributors."""
-    mes: int
-    anio: int
-    ventas_totales: float
+    """Period summary — field names match frontend ComisionResumen type."""
+    total_ventas_mes: float
     comisiones_totales: float
-    recuperos_totales: float
-    neto_total: float
-    distribuidores: list[ComisionDistribuidorResult]
+    recuperos_devoluciones: float
+    variacion_ventas: float = 0.0
+    cantidad_devoluciones: int = 0
+    distribuidores: list[ComisionDistribuidorFE]

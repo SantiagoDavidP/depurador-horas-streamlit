@@ -46,7 +46,8 @@ export const CalculoComisionesPage: React.FC = () => {
   const { data, isLoading, isCalculating, error, fetchResumen, ejecutarCalculo, exportExcel } =
     useComisiones();
 
-  const [mes, anio] = selectedPeriodo.split('-').map(Number) as [number, number];
+  // "YYYY-MM" → split → ["YYYY","MM"] → primer elemento es el AÑO, segundo es el MES
+  const [anio, mes] = selectedPeriodo.split('-').map(Number) as [number, number];
 
   useEffect(() => {
     fetchResumen(mes, anio);

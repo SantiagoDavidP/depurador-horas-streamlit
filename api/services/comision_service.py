@@ -37,6 +37,7 @@ from api.models.comision import (
     ComisionCalculoRequest,
     ComisionCalculoResponse,
     ComisionDetailResponse,
+    ComisionDistribuidorFE,
     ComisionDistribuidorResult,
     ComisionResponse,
     ComisionSummaryResponse,
@@ -306,34 +307,34 @@ class ComisionService:
         items = await self.comision_repo.get_multi(
             skip=0, limit=100, mes=mes, anio=anio
         )
-        distribuidores = []
+        distribuidores: list[ComisionDistribuidorFE] = []
         ventas_total = 0.0
         comisiones_total = 0.0
         recuperos_total = 0.0
-        neto_total = 0.0
+        cantidad_devoluciones = 0
 
         for c in items:
             distribuidores.append(
-                ComisionDistribuidorResult(
+                ComisionDistribuidorFE(
                     distribuidor=c.distribuidor,
-                    ventas_totales=c.ventas_totales,
-                    porcentaje=c.porcentaje,
-                    comision_bruta=c.comision_bruta,
+                    distribuidor_ruc="",
+                    porcentaje_comision=c.porcentaje,
+                    ventas_periodo=c.ventas_totales,
+                    comision_total=c.comision_bruta,
                     recuperos=c.recuperos,
-                    neto_a_pagar=c.neto_a_pagar,
+                    neto_pagar=c.neto_a_pagar,
+                    detalles=[],
                 )
             )
             ventas_total += c.ventas_totales
             comisiones_total += c.comision_bruta
             recuperos_total += c.recuperos
-            neto_total += c.neto_a_pagar
 
         return ComisionSummaryResponse(
-            mes=mes,
-            anio=anio,
-            ventas_totales=round(ventas_total, 2),
+            total_ventas_mes=round(ventas_total, 2),
             comisiones_totales=round(comisiones_total, 2),
-            recuperos_totales=round(recuperos_total, 2),
-            neto_total=round(neto_total, 2),
+            recuperos_devoluciones=round(recuperos_total, 2),
+            variacion_ventas=0.0,
+            cantidad_devoluciones=cantidad_devoluciones,
             distribuidores=distribuidores,
         )
